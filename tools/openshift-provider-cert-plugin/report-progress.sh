@@ -100,7 +100,7 @@ report_sonobuoy_progress() {
             break
         fi
 
-        while read line;
+        while read -r line;
         do
             #TODO(bug): JOB_PROGRESS is not detecting the last test count. Example: 'started: (0/10/10)''
             local job_progress
