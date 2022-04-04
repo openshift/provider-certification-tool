@@ -9,7 +9,9 @@ set -o pipefail
 set -o nounset
 set -o errexit
 
+# shellcheck disable=SC1091
 source "$(dirname "$0")"/global_env.sh
+# shellcheck disable=SC1091
 source "$(dirname "$0")"/global_fn.sh
 
 os_log_info_local() {
