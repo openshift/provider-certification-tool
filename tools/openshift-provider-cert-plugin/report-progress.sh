@@ -13,7 +13,7 @@ source "$(dirname "$0")"/global_env.sh
 source "$(dirname "$0")"/global_fn.sh
 
 os_log_info_local() {
-    echo "$(date +%Y%m%d-%H%M%S)> [report] $@"
+    echo "$(date +%Y%m%d-%H%M%S)> [report] $*"
 }
 
 wait_pipe_exists() {
@@ -138,7 +138,7 @@ report_sonobuoy_progress() {
 }
 
 set_config
-os_log_info_local "PLUGIN_BLOCKED_BY=${PLUGIN_BLOCKED_BY[@]}"
+os_log_info_local "PLUGIN_BLOCKED_BY=${PLUGIN_BLOCKED_BY[*]}"
 
 wait_pipe_exists
 watch_plugin_done &

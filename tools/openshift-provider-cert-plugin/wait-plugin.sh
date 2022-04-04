@@ -6,13 +6,13 @@ set -o nounset
 # set -o errexit
 
 os_log_info_waiter() {
-    os_log_info "$(date +%Y%m%d-%H%M%S)> [waiter] $@"
+    os_log_info "$(date +%Y%m%d-%H%M%S)> [waiter] $*"
 }
 
 total_wait_timeout=1h
 os_log_info_waiter "Starting Level[${CERT_LEVEL:-}]..."
 
-os_log_info_waiter "PLUGIN_BLOCKED_BY=${PLUGIN_BLOCKED_BY[@]}"
+os_log_info_waiter "PLUGIN_BLOCKED_BY=${PLUGIN_BLOCKED_BY[*]}"
 if [[ "${CERT_LEVEL:-}" == "1" ]]
 then
     os_log_info_waiter "Setting config for CERT_LEVEL=[${CERT_LEVEL:-}]"
@@ -28,12 +28,12 @@ then
     os_log_info_waiter "Setting config for CERT_LEVEL=[${CERT_LEVEL:-}]"
     PLUGIN_BLOCKED_BY+=("openshift-provider-cert-level2")
 fi
-os_log_info_waiter "PLUGIN_BLOCKED_BY=${PLUGIN_BLOCKED_BY[@]}"
+os_log_info_waiter "PLUGIN_BLOCKED_BY=${PLUGIN_BLOCKED_BY[*]}"
 
 if [[ "${CERT_LEVEL:-}" != "1" ]]; then 
     # Wait the pod to be running
-    os_log_info_waiter "Checking if Level[${CERT_LEVEL:-}] is blocked by labels [${PLUGIN_BLOCKED_BY[@]}] are ready..."
-    for pod_label in ${PLUGIN_BLOCKED_BY[@]}; do
+    os_log_info_waiter "Checking if Level[${CERT_LEVEL:-}] is blocked by labels [${PLUGIN_BLOCKED_BY[*]}] are ready..."
+    for pod_label in "${PLUGIN_BLOCKED_BY[@]}"; do
         os_log_info_waiter "Waiting running pod-label: ${pod_label}"
         kubectl wait \
             --timeout=${total_wait_timeout} \
