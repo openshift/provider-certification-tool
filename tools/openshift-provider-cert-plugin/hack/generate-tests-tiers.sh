@@ -91,13 +91,13 @@ collector
 
 # Creating unique test names by Tier
 cp "${tests_level1}" "${tests_level1}.tmp"
-cat "${tests_level1}.tmp" |sort -u > "${tests_level1}"
+sort -u "${tests_level1}.tmp" > "${tests_level1}"
 
 cp "${tests_level2}" "${tests_level2}.tmp"
-cat "${tests_level2}.tmp" |sort -u > "${tests_level2}"
+sort -u "${tests_level2}.tmp" > "${tests_level2}"
 
 cp "${tests_level3}" "${tests_level3}.tmp"
-cat "${tests_level3}.tmp" |sort -u > "${tests_level3}"
+sort -u "${tests_level3}.tmp" > "${tests_level3}"
 
 rm -rvf "${tests_path}"/*.tmp
 
