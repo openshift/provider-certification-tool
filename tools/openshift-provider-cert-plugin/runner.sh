@@ -37,7 +37,8 @@ sig_handler_save_results() {
     # It happens when tests file is empty.
     # TODO(pre-release): review that strategy
     if [[ -z "${junit_output}" ]]; then
-        local res_file="junit_empty_e2e_$(date +%Y%m%d-%H%M%S).xml"
+        local res_file
+        res_file="junit_empty_e2e_$(date +%Y%m%d-%H%M%S).xml"
         os_log_info_local "Creating empty Junit result file [${res_file}]"
         cat << EOF > "${res_file}"
 <testsuite name="openshift-tests" tests="0" skipped="0" failures="0" time="1"><property name="TestVersion" value="v4.1.0-4964-g555da83"></property></testsuite>
@@ -51,7 +52,7 @@ EOF
     os_log_info_local "Sending sonobuoy worker the result file path"
     echo "${RESULTS_DIR}/${junit_output}" > "${RESULTS_DONE_NOTIFY}"
 
-    popd;
+    popd || true;
     os_log_info_local "Results saved at ${RESULTS_DONE_NOTIFY}=[${RESULTS_DIR}/${junit_output}]";
 }
 trap sig_handler_save_results EXIT

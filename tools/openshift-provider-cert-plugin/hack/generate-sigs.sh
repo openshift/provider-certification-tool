@@ -4,11 +4,9 @@
 # Provider certification tests generator.
 #
 
-openshift_tests_img="${OPENSHIFT_TESTS:-'openshift-tests:latest'}"
-
 run_openshift_tests() {
     podman run --rm --name openshift-tests \
-        -it openshift-tests:latest openshift-tests run --dry-run $@
+        -it openshift-tests:latest openshift-tests run --dry-run "$@"
 }
 
 

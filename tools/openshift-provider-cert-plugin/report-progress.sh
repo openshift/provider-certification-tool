@@ -18,7 +18,6 @@ os_log_info_local() {
 
 wait_pipe_exists() {
     os_log_info_local "waiting for pipe creation..."
-    pip_exists=false
     while true
     do
         test -p "${RESULTS_PIPE}" && break
@@ -42,7 +41,7 @@ watch_plugin_done() {
 
 watch_dependency_done() {
     os_log_info_local "[plugin dependencies] Starting dependency check..."
-    for plugin_name in ${PLUGIN_BLOCKED_BY[@]}; do
+    for plugin_name in "${PLUGIN_BLOCKED_BY[@]}"; do
         os_log_info_local "waiting for plugin [${plugin_name}]"
         timeout_checks=0
         timeout_count=100

@@ -8,9 +8,9 @@ tmp_origin="./tmp/origin"
 rm -rf "${tmp_origin}"
 git clone git@github.com:openshift/origin.git "$tmp_origin"
 
-pushd "${tmp_origin}"
+pushd "${tmp_origin}" || exit 1
 podman build \
     --authfile "${PULL_SECRET}" \
     -t openshift-tests:latest \
     -f images/tests/Dockerfile.rhel .
-popd
+popd || true
