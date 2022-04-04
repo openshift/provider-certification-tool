@@ -16,10 +16,10 @@ sys_sig_handler_term() {
 trap sys_sig_handler_term TERM
 
 create_dependencies_plugin() {
-    test -d ${RESULTS_SCRIPTS} || mkdir -p ${RESULTS_SCRIPTS}
+    test -d "${RESULTS_SCRIPTS}" || mkdir -p "${RESULTS_SCRIPTS}"
 
     os_log_info_local "Creating results pipe to progress updater..."
-    test -p ${RESULTS_PIPE} || mkfifo ${RESULTS_PIPE}
+    test -p "${RESULTS_PIPE}" || mkfifo "${RESULTS_PIPE}"
 }
 
 set_config() {

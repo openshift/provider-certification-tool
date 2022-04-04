@@ -18,7 +18,7 @@ fi
 #  running the suite of tests instead of providing a new cluster installation?
 for project in $(oc get projects |awk '{print$1}' |grep ^e2e |sort -u || true); do
     echo "Stale namespace was found: [${project}], deleting..."
-    oc delete project ${project} || true
+    oc delete project "${project}" || true
 done
 
 echo "Running OpenShift Provider Certification Tool..."
@@ -96,7 +96,7 @@ if [[ -f ${result_file} ]]; then
     test -f .tmp/ && mv .tmp/ .tmp/old-$(date +%Y%m%d%H%M%S)
     test -f .tmp/ || mkdir -p .tmp/
     echo "${result_file}" > .tmp/latest-result.txt
-    cp ${result_file} ./.tmp/
+    cp "${result_file}" ./.tmp/
     exit 0
 fi
 

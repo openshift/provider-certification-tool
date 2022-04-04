@@ -8,14 +8,14 @@ set -o pipefail
 set -o nounset
 # set -o errexit
 
-source $(dirname $0)/global_env.sh
-source $(dirname $0)/global_fn.sh
+source $(dirname "$0")/global_env.sh
+source $(dirname "$0")/global_fn.sh
 
 os_log_info_local() {
     os_log_info "$(date +%Y%m%d-%H%M%S)> [runner] $@"
 }
 
-os_log_info_local "Starting plugin..." |tee -a ${RESULTS_SCRIPTS}/runner.log
+os_log_info_local "Starting plugin..."
 
 create_dependencies_plugin
 set_config
@@ -27,7 +27,7 @@ sig_handler_save_results() {
     os_log_info_local "Saving results triggered. Slowing down..."
     sleep 5
 
-    pushd ${RESULTS_DIR};
+    pushd "${RESULTS_DIR}";
 
     # JUnit
     os_log_info_local "Looking for junit result files..."
@@ -46,7 +46,7 @@ EOF
     fi
 
     os_log_info_local "Adjusting permissions for results files."
-    chmod 644 ${junit_output};
+    chmod 644 "${junit_output}";
 
     os_log_info_local "Sending sonobuoy worker the result file path"
     echo "${RESULTS_DIR}/${junit_output}" > "${RESULTS_DONE_NOTIFY}"
@@ -61,11 +61,11 @@ trap sig_handler_save_results EXIT
 # may impact on the results (mainly in monitoring).
 # https://github.com/mtulio/openshift-provider-certification/issues/2
 os_log_info_local "starting waiter..."
-$(dirname $0)/wait-plugin.sh
+$(dirname "$0")/wait-plugin.sh
 
 os_log_info_local "starting executor..."
 
-$(dirname $0)/executor.sh #| tee -a ${results_script_dir}/executor.log
+$(dirname "$0")/executor.sh #| tee -a ${results_script_dir}/executor.log
 
 # TODO(report): add a post processor of JUnit to identify flakes
 # https://github.com/mtulio/openshift-provider-certification/issues/14
