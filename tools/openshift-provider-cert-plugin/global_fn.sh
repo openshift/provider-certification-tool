@@ -31,19 +31,19 @@ set_config() {
     elif [[ "${CERT_LEVEL:-}" == "1" ]]
     then
         os_log_info_local "Setting config for CERT_LEVEL=[${CERT_LEVEL:-}]"
-        export CERT_TEST_FILE="./tests/level1.txt"
+        CERT_TEST_FILE="./tests/level1.txt"
         PLUGIN_BLOCKED_BY=()
 
     elif [[ "${CERT_LEVEL:-}" == "2" ]]
     then
         os_log_info_local "Setting config for CERT_LEVEL=[${CERT_LEVEL:-}]" 
-        export CERT_TEST_FILE="./tests/level2.txt"
+        CERT_TEST_FILE="./tests/level2.txt"
         PLUGIN_BLOCKED_BY+=("openshift-provider-cert-level1")
 
     elif [[ "${CERT_LEVEL:-}" == "3" ]]
     then
         os_log_info_local "Setting config for CERT_LEVEL=[${CERT_LEVEL:-}]"
-        export CERT_TEST_FILE="./tests/level3.txt"
+        CERT_TEST_FILE="./tests/level3.txt"
         PLUGIN_BLOCKED_BY+=("openshift-provider-cert-level2")
 
     else
