@@ -9,8 +9,8 @@ set -o pipefail
 set -o nounset
 set -o errexit
 
-source $(dirname "$0")/global_env.sh
-source $(dirname "$0")/global_fn.sh
+source "$(dirname "$0")"/global_env.sh
+source "$(dirname "$0")"/global_fn.sh
 
 os_log_info_local() {
     echo "$(date +%Y%m%d-%H%M%S)> [report] $@"

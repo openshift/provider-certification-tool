@@ -8,8 +8,8 @@ set -o pipefail
 set -o nounset
 # set -o errexit
 
-source $(dirname "$0")/global_env.sh
-source $(dirname "$0")/global_fn.sh
+source "$(dirname "$0")"/global_env.sh
+source "$(dirname "$0")"/global_fn.sh
 
 os_log_info_local() {
     os_log_info "$(date +%Y%m%d-%H%M%S)> [runner] $@"
@@ -27,7 +27,7 @@ sig_handler_save_results() {
     os_log_info_local "Saving results triggered. Slowing down..."
     sleep 5
 
-    pushd "${RESULTS_DIR}";
+    pushd "${RESULTS_DIR}" || exit 1
 
     # JUnit
     os_log_info_local "Looking for junit result files..."
@@ -61,11 +61,11 @@ trap sig_handler_save_results EXIT
 # may impact on the results (mainly in monitoring).
 # https://github.com/mtulio/openshift-provider-certification/issues/2
 os_log_info_local "starting waiter..."
-$(dirname "$0")/wait-plugin.sh
+"$(dirname "$0")"/wait-plugin.sh
 
 os_log_info_local "starting executor..."
 
-$(dirname "$0")/executor.sh #| tee -a ${results_script_dir}/executor.log
+"$(dirname "$0")"/executor.sh #| tee -a ${results_script_dir}/executor.log
 
 # TODO(report): add a post processor of JUnit to identify flakes
 # https://github.com/mtulio/openshift-provider-certification/issues/14

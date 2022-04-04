@@ -93,7 +93,7 @@ if [[ -f ${result_file} ]]; then
     # TODO(pre-release): improve the result inspection.
     # TODO(asap): remove dependency of report.sh
     # https://github.com/mtulio/openshift-provider-certification/issues/16
-    test -f .tmp/ && mv .tmp/ .tmp/old-$(date +%Y%m%d%H%M%S)
+    test -f .tmp/ && mv .tmp/ .tmp/old-"$(date +%Y%m%d%H%M%S)"
     test -f .tmp/ || mkdir -p .tmp/
     echo "${result_file}" > .tmp/latest-result.txt
     cp "${result_file}" ./.tmp/

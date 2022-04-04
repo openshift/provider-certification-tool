@@ -8,7 +8,7 @@ tmp_dir="$(dirname "$0")/.tmp"
 result_file=$(cat "${tmp_dir}"/latest-result.txt)
 result_dir=${tmp_dir}/results
 
-test -d "${result_dir}" && rm -rf "$result_dir"/*
+test -d "${result_dir}" && rm -rf "${result_dir:-./}"/*
 test -d "${result_dir}" || mkdir -p "$result_dir"
 
 plugin_names=()
@@ -39,7 +39,7 @@ echo "Getting result feedback..."
 echo "Getting tests count by status for each Level:"
 
 statusess="passed skipped failed";
-for plugin_name in ${plugin_names[@]}; do
+for plugin_name in "${plugin_names[@]}"; do
     for st in $statusess; do
         echo "#> ${plugin_name} [${st}]:";
         yq -r ".items[].items[].items[] | select (.status==\"$st\").name" \
