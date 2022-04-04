@@ -23,7 +23,7 @@ truncat -s0 "${tests_level3}"
 
 run_openshift_tests() {
     podman run --rm --name openshift-tests \
-        -it "${openshift_tests_img}" openshift-tests run --dry-run $@
+        -it "${openshift_tests_img}" openshift-tests run --dry-run "$@"
 }
 
 #
