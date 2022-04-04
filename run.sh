@@ -8,7 +8,7 @@ echo "Starting OpenShift Provider Certification Tool..."
 
 # Check if there's sonobuoy environment: should fail
 NS_SONOBUOY="$(oc get projects |grep ^sonobuoy || true)"
-if [[ ! -z "${NS_SONOBUOY}" ]]; then
+if [[ -n "${NS_SONOBUOY}" ]]; then
     echo "sonobuoy project is present on cluster. Run the destroy flow: ./destroy.sh"
     exit 1
 fi

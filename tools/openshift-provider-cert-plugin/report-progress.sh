@@ -106,7 +106,7 @@ report_sonobuoy_progress() {
             #TODO(bug): JOB_PROGRESS is not detecting the last test count. Example: 'started: (0/10/10)''
             local job_progress
             job_progress=$(echo $line | grep -Po "\([0-9]{1,}\/[0-9]{1,}\/[0-9]{1,}\)" || true);
-            if [ ! -z "${job_progress}" ]; then
+            if [[ -n "${job_progress}" ]]; then
                 has_update=1;
                 PROGRESS["completed"]=$(echo ${job_progress:1:-1} | cut -d'/' -f 2)
                 PROGRESS["total"]=$(echo ${job_progress:1:-1} | cut -d'/' -f 3)
