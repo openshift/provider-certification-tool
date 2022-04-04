@@ -17,13 +17,13 @@ tests_level1="${tests_path}/level1.txt"
 tests_level2="${tests_path}/level2.txt"
 tests_level3="${tests_path}/level3.txt"
 
->"${tests_level1}"
->"${tests_level2}"
->"${tests_level3}"
+truncat -s0 "${tests_level1}"
+truncat -s0 "${tests_level2}"
+truncat -s0 "${tests_level3}"
 
 run_openshift_tests() {
     podman run --rm --name openshift-tests \
-        -it openshift-tests:latest openshift-tests run --dry-run $@
+        -it "${openshift_tests_img}" openshift-tests run --dry-run $@
 }
 
 #
