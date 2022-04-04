@@ -67,7 +67,7 @@ for plugin_name in "${plugin_names[@]}"; do
     echo -e "\n#> ${plugin_name} plugin error: "
     jq -r '. | select (.error != null) | .error' results/plugins/"${plugin_name}"/errors/global/error.json 2>/dev/null || true
 
-    echo -e "\n#> ${plugin_name}'s pod phase state: " $(jq -r '.pod.status.phase' results/plugins/"${plugin_name}"/errors/global/error.json 2>/dev/null || true);
+    echo -e "\n#> ${plugin_name}'s pod phase state: " "$(jq -r '.pod.status.phase' results/plugins/"${plugin_name}"/errors/global/error.json 2>/dev/null || true)";
     echo -e "\n#> ${plugin_name} pod's containers exit code: "
     jq -r '.pod.status.containerStatuses[] |(.name, .state.terminated.exitCode)' results/plugins/"${plugin_name}"/errors/global/error.json 2>/dev/null || true;
 done;
