@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 #
 # openshift-tests-partner-cert plugin - progress reporter

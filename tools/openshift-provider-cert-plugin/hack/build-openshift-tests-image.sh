@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # Build openshift-tests binary
 # https://github.com/openshift/origin#end-to-end-e2e-and-extended-tests

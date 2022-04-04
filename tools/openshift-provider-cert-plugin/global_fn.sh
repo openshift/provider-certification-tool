@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 os_log_info() {
     echo "#$(caller |awk '{print$2":"$1}')> " $@
