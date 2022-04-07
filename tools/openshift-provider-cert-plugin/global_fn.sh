@@ -58,7 +58,7 @@ init_config() {
     fi
 
     os_log_info_local "Level's specific finished. Setting discoverying total tests to run..."
-    CERT_TEST_FILE_COUNT=0
+    export CERT_TEST_FILE_COUNT=0
     if [[ -n "${CERT_TEST_FILE:-}" ]]; then
         CERT_TEST_FILE_COUNT="$(wc -l "${CERT_TEST_FILE}" |cut -f 1 -d' ' |tr -d '\n')"
     fi
