@@ -70,7 +70,49 @@ cmd_results() {
 #
 # cmd: destroy
 #
+check_sonobuoy_not_present() {
+    # Check if there's sonobuoy environment: should fail
+    if [[ -z "$(oc get projects |grep ^sonobuoy || true)" ]]; then
+        echo "The namespace [sonobuoy] is not present on cluster."
+        exit 1
+    fi
+}
 
+delete_sonobuoy_env() {
+    ${CMD_SONOBUOY} delete --wait
+}
+
+delete_tests_namespaces() {
+    sleep 10;
+    echo "Removing non-openshift NS (don't do it on the final release =] )"
+    mapfile -t ns_to_delete < <(oc get projects |awk '{print$1}' |grep -vP '^(NAME)|(openshift)|(kube-(system|public|node-lease))|(default)' |sort -u || true)
+    for project in "${ns_to_delete[@]}"; do
+        echo "Stale namespace was found: [${project}], removing..."
+        oc delete project "${project}" || true
+    done
+}
+
+restore_scc() {
+    echo "Restoring privileged environment..."
+    oc adm policy remove-scc-from-group anyuid system:authenticated system:serviceaccounts || true
+    oc adm policy remove-scc-from-group privileged system:authenticated system:serviceaccounts  || true
+}
+
+delete_sonobuoy_status() {
+    echo "Removing status file"
+    rm "${STAT_FILE}" || true
+}
+
+cmd_destroy() {
+    echo "##> "
+    echo "#> Starting destroy flow..."
+    check_sonobuoy_not_present
+    delete_sonobuoy_env
+    delete_sonobuoy_status
+    delete_tests_namespaces
+    restore_scc
+    echo "Destroy Done!"
+}
 
 #
 # cmd: run
@@ -305,8 +347,13 @@ parse_cmd_run() {
 }
 
 # handler of cmd: results
-parse_cmd_res() {
+parse_cmd_results() {
     cmd_results
+}
+
+# handler of cmd: destroy
+parse_cmd_destroy() {
+    cmd_destroy
 }
 
 #
@@ -316,7 +363,8 @@ parse_cmds() {
     case ${1:-""} in
     "help"|"--help" ) show_help; exit 0 ;;
     "run"           ) OPT_CMD="$1"; shift; parse_cmd_run "$@";;
-    "results"|"res" ) OPT_CMD="$1"; shift; parse_cmd_res "$@";;
+    "results"|"res" ) OPT_CMD="$1"; shift; parse_cmd_results "$@";;
+    "destroy"       ) OPT_CMD="$1"; shift; parse_cmd_destroy "$@";;
     *) echo "Command [${1:-}] not found"; show_help;;
     esac
 }
