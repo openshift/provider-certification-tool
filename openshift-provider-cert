@@ -14,9 +14,13 @@ set -o errexit
 #
 declare -gx OPT_CMD
 declare -gx RUN_TIMEOUT
-declare -gx STAT_FILE
 
-STAT_FILE="/tmp/sonobuoy-status.json"
+declare -gxr WORKDIR="${PWD}/.openshift-cert"
+declare -gxr STAT_FILE="${WORKDIR}/sonobuoy-status.json"
+declare -gxr CMD_SONOBUOY="$(command -v sonobuoy)"
+declare -gxr RESULTS_LATEST="${WORKDIR}/results-latest.txt"
+
+mkdir -p "${WORKDIR}"
 
 #
 # Helper
@@ -28,6 +32,7 @@ Usage: ${0} command [options]
 Available commands:
     help                        Show this help.
     run                         Run the suite of tests for provider certification.
+    results                     Show the current results.
 
 Global options:
     -h | --help                 Show this help.
@@ -45,20 +50,30 @@ EOF
 }
 
 #
-# cmd: Status
+# cmd: status
 #
 
 #
-# cmd: Inspect
+# cmd: results
+#
+cmd_results() {
+    if [[ ! -f "${RESULTS_LATEST}" ]]
+    then
+        echo "ERROR: the result file[${RESULTS_LATEST}] was not found."
+    fi
+    if [[ ! -f "$(cat "${RESULTS_LATEST}")" ]]
+    then
+        echo "ERROR: the artifact file[$(cat "${RESULTS_LATEST}")] was not found."
+    fi
+    ${CMD_SONOBUOY} results "$(cat "${RESULTS_LATEST}")"
+}
+#
+# cmd: destroy
 #
 
-#
-# cmd: Destroy
-#
-
 
 #
-# cmd: Run
+# cmd: run
 #
 check_sonobuoy_is_present() {
     # Check if there's sonobuoy environment: should fail
@@ -81,7 +96,7 @@ run_default() {
     # Do not use timeout=0:
     # https://github.com/mtulio/openshift-provider-certification/issues/17
     PLUGIN_TIMEOUT=${RUN_TIMEOUT:-43200}
-    sonobuoy run \
+    ${CMD_SONOBUOY} run \
         --dns-namespace openshift-dns \
         --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
         --timeout "${PLUGIN_TIMEOUT}" \
@@ -98,7 +113,7 @@ run_default() {
 }
 
 run_status_updater() {
-    sonobuoy status --json > "${STAT_FILE}" 2>/dev/null || true
+    ${CMD_SONOBUOY} status --json > "${STAT_FILE}" 2>/dev/null || true
 }
 
 show_status() {
@@ -259,6 +274,7 @@ cmd_run() {
     collect_results
 }
 
+# handler of cmd: run
 parse_cmd_run() {
 
     # NOTE: This requires GNU getopt.
@@ -288,6 +304,11 @@ parse_cmd_run() {
     cmd_run
 }
 
+# handler of cmd: results
+parse_cmd_res() {
+    cmd_results
+}
+
 #
 # Main
 #
@@ -295,6 +316,7 @@ parse_cmds() {
     case ${1:-""} in
     "help"|"--help" ) show_help; exit 0 ;;
     "run"           ) OPT_CMD="$1"; shift; parse_cmd_run "$@";;
+    "results"|"res" ) OPT_CMD="$1"; shift; parse_cmd_res "$@";;
     *) echo "Command [${1:-}] not found"; show_help;;
     esac
 }
