@@ -13,12 +13,17 @@ set -o errexit
 # Globals
 #
 declare -gx OPT_CMD
+declare -gx OPT_WATCH
 declare -gx RUN_TIMEOUT
 
+declare -gxr PROG_NAME="openshift-provider-cert"
 declare -gxr WORKDIR="${PWD}/.openshift-cert"
 declare -gxr STAT_FILE="${WORKDIR}/sonobuoy-status.json"
 declare -gxr CMD_SONOBUOY="$(command -v sonobuoy)"
 declare -gxr RESULTS_LATEST="${WORKDIR}/results-latest.txt"
+declare -gxr STATUS_INTERVAL_SEC=10
+
+OPT_WATCH=false
 
 mkdir -p "${WORKDIR}"
 
@@ -32,7 +37,10 @@ Usage: ${0} command [options]
 Available commands:
     help                        Show this help.
     run                         Run the suite of tests for provider certification.
-    results                     Show the current results.
+    status                      Show the current status.
+    retrieve                    Collect the results from Certification environment.
+    results                     Read the results from the latest artifact file.
+    destroy                     Destroy current Certification Environment.
 
 Global options:
     -h | --help                 Show this help.
@@ -40,10 +48,29 @@ Global options:
 Available options for 'run':
     --timeout {number}          Optional. Timeout in minutes to
                                 wait the execution. Default: 43200
+    -w|--watch                  Optional. Keep watch status after running.
+
+Available options for 'status':
+    -w|--watch                  Optional. Keep watch status after running.
+
 
 Examples:
     # Run the Certification tool
     ${0} run
+    ${0} run -w
+
+    # Check the current status
+    ${0} status
+    ${0} status -w
+
+    # Collect the result artifacts
+    ${0} retrieve
+
+    # Show the results from the latest artifacts
+    ${0} results
+
+    # Destroy the certificate environment
+    ${0} destroy
 
 EOF
 
@@ -52,112 +79,20 @@ EOF
 #
 # cmd: status
 #
-
-#
-# cmd: results
-#
-cmd_results() {
-    if [[ ! -f "${RESULTS_LATEST}" ]]
-    then
-        echo "ERROR: the result file[${RESULTS_LATEST}] was not found."
-    fi
-    if [[ ! -f "$(cat "${RESULTS_LATEST}")" ]]
-    then
-        echo "ERROR: the artifact file[$(cat "${RESULTS_LATEST}")] was not found."
-    fi
-    ${CMD_SONOBUOY} results "$(cat "${RESULTS_LATEST}")"
-}
-#
-# cmd: destroy
-#
-check_sonobuoy_not_present() {
-    # Check if there's sonobuoy environment: should fail
+check_sonobuoy_ns_exists() {
     if [[ -z "$(oc get projects |grep ^sonobuoy || true)" ]]; then
-        echo "The namespace [sonobuoy] is not present on cluster."
-        exit 1
+        echo -ne 1
     fi
-}
-
-delete_sonobuoy_env() {
-    ${CMD_SONOBUOY} delete --wait
-}
-
-delete_tests_namespaces() {
-    sleep 10;
-    echo "Removing non-openshift NS (don't do it on the final release =] )"
-    mapfile -t ns_to_delete < <(oc get projects |awk '{print$1}' |grep -vP '^(NAME)|(openshift)|(kube-(system|public|node-lease))|(default)' |sort -u || true)
-    for project in "${ns_to_delete[@]}"; do
-        echo "Stale namespace was found: [${project}], removing..."
-        oc delete project "${project}" || true
-    done
-}
-
-restore_scc() {
-    echo "Restoring privileged environment..."
-    oc adm policy remove-scc-from-group anyuid system:authenticated system:serviceaccounts || true
-    oc adm policy remove-scc-from-group privileged system:authenticated system:serviceaccounts  || true
-}
-
-delete_sonobuoy_status() {
-    echo "Removing status file"
-    rm "${STAT_FILE}" || true
-}
-
-cmd_destroy() {
-    echo "##> "
-    echo "#> Starting destroy flow..."
-    check_sonobuoy_not_present
-    delete_sonobuoy_env
-    delete_sonobuoy_status
-    delete_tests_namespaces
-    restore_scc
-    echo "Destroy Done!"
-}
-
-#
-# cmd: run
-#
-check_sonobuoy_is_present() {
-    # Check if there's sonobuoy environment: should fail
-    local ns
-    ns="$(oc get projects |grep ^sonobuoy || true)"
-    if [[ -n "${ns}" ]]; then
-        echo "sonobuoy project is present on cluster. Run the destroy flow: ./destroy.sh"
-        exit 1
-    fi
-}
-
-set_scc() {
-    echo "Ensuring the Tool will run in the privileged environment..."
-    oc adm policy add-scc-to-group anyuid system:authenticated system:serviceaccounts
-    oc adm policy add-scc-to-group privileged system:authenticated system:serviceaccounts
-}
-
-run_default() {
-    echo "Running OpenShift Provider Certification Tool..."
-    # Do not use timeout=0:
-    # https://github.com/mtulio/openshift-provider-certification/issues/17
-    PLUGIN_TIMEOUT=${RUN_TIMEOUT:-43200}
-    ${CMD_SONOBUOY} run \
-        --dns-namespace openshift-dns \
-        --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
-        --timeout "${PLUGIN_TIMEOUT}" \
-        --plugin tools/plugins/openshift-kube-conformance.yaml \
-        --plugin tools/plugins/openshift-provider-cert-level-1.yaml \
-        --plugin tools/plugins/openshift-provider-cert-level-2.yaml \
-        --plugin tools/plugins/openshift-provider-cert-level-3.yaml
-    RC=$?
-    if [[ ${RC} -ne 0 ]]; then
-        echo "ERROR: error running the tool. Please check the errors and try again."
-        exit ${RC}
-    fi
-    echo "$(date)> The certification tool is running, statuses will be reported every minute..."
+    echo -ne 0
 }
 
 run_status_updater() {
     ${CMD_SONOBUOY} status --json > "${STAT_FILE}" 2>/dev/null || true
 }
 
+# show_status reads the .msg field from plugin object used to implement
+# the serial execution. That field contains more details about the current
+# state of plugin. It is not displayed by default on 'sonobuoy status'.
 show_status() {
     run_status_updater
     printf "\n\n$(date)> Global Status: %s" "$(jq -r '.status // "Unknown"' ${STAT_FILE})"
@@ -193,8 +128,11 @@ show_status() {
                 "${plugin_name}" "${pl_status}" "${pl_result}" \
                 "${pl_progress}" "${pl_msg}"
     done
+    printf "\n\n"
 }
 
+# show_results_processor is used to display the post-processor counters available,
+# after the plugins has been completed.
 show_results_processor() {
     run_status_updater
     printf "\n\n$(date)> Global Status: %s" "$(jq -r '.status // "Unknown"' ${STAT_FILE})"
@@ -215,18 +153,149 @@ show_results_processor() {
                 "${plugin_name}" "${pl_status}" \
                 "${pl_result}" "${pl_msg}"
     done
+    printf "\n\n"
+}
+
+cmd_status() {
+    if [[ $(check_sonobuoy_ns_exists) -ne 0 ]]
+    then
+        echo "ERROR: Looks like there's not Certification environment running."
+        echo "       Use the 'run' option to start the Certification process."
+        exit 1
+    fi
+    run_status_updater
+    # jobs is with status=running
+    if [[ "$(jq -r .status "${STAT_FILE}")" == "running" ]]
+    then
+        if [[ "${OPT_WATCH}" == true ]]
+        then
+            wait_for_jobs_running
+        fi
+        show_status
+        exit 0
+    fi
+    # jobs is with status=post-processing
+    if [[ "$(jq -r .status "${STAT_FILE}")" == "post-processing" ]]
+    then
+        show_results_processor
+        exit 0
+    fi
+    #TODO: check the other states
+    echo "TODO: unknown state [$(jq -r .status "${STAT_FILE}")]"
+}
+#
+# cmd: results
+#
+cmd_results() {
+    if [[ ! -f "${RESULTS_LATEST}" ]]
+    then
+        echo "ERROR: the result file[${RESULTS_LATEST}] was not found."
+    fi
+    if [[ ! -f "$(cat "${RESULTS_LATEST}")" ]]
+    then
+        echo "ERROR: the artifact file[$(cat "${RESULTS_LATEST}")] was not found."
+    fi
+    ${CMD_SONOBUOY} results "$(cat "${RESULTS_LATEST}")"
+}
+#
+# cmd: destroy
+#
+check_sonobuoy_not_present() {
+    # Check if there's sonobuoy environment: should fail
+    if [[ -z "$(oc get projects |grep ^sonobuoy || true)" ]]; then
+        echo "The namespace [sonobuoy] is not present on cluster. Ignoring..."
+        exit 1
+    fi
+}
+
+delete_sonobuoy_env() {
+    ${CMD_SONOBUOY} delete --wait
+}
+
+delete_tests_namespaces() {
+    sleep 10;
+    echo "Removing non-openshift NS (don't do it on the final release =] )"
+    mapfile -t ns_to_delete < <(oc get projects |awk '{print$1}' |grep -vP '^(NAME)|(openshift)|(kube-(system|public|node-lease))|(default)' |sort -u || true)
+    for project in "${ns_to_delete[@]}"; do
+        echo "Stale namespace was found: [${project}], removing..."
+        oc delete project "${project}" || true
+    done
+}
+
+restore_scc() {
+    echo "Restoring privileged environment..."
+    oc adm policy remove-scc-from-group anyuid system:authenticated system:serviceaccounts || true
+    oc adm policy remove-scc-from-group privileged system:authenticated system:serviceaccounts  || true
+}
+
+delete_sonobuoy_status() {
+    echo "Removing status file"
+    rm "${STAT_FILE}" || true
+}
+
+cmd_destroy() {
+    echo "##> "
+    echo "#> Starting destroy flow..."
+
+    if [[ -n "$(oc get projects |grep ^sonobuoy || true)" ]]
+    then
+        delete_sonobuoy_env
+        delete_sonobuoy_status
+    fi
+
+    delete_tests_namespaces
+    restore_scc
+    echo "Destroy Done!"
+}
+
+#
+# cmd: run
+#
+check_sonobuoy_is_present() {
+    if [[ $(check_sonobuoy_ns_exists) -eq 0 ]]
+    then
+        echo "ERROR: Looks like the Certification environment exists."
+        echo "Run the 'destroy' option before starting new certification tests."
+        exit 1
+    fi
+}
+
+set_scc() {
+    echo "Ensuring the Tool will run in the privileged environment..."
+    oc adm policy add-scc-to-group anyuid system:authenticated system:serviceaccounts
+    oc adm policy add-scc-to-group privileged system:authenticated system:serviceaccounts
+}
+
+run_default() {
+    echo "Running OpenShift Provider Certification Tool..."
+    # Do not use timeout=0:
+    # https://github.com/mtulio/openshift-provider-certification/issues/17
+    PLUGIN_TIMEOUT=${RUN_TIMEOUT:-43200}
+    ${CMD_SONOBUOY} run \
+        --dns-namespace=openshift-dns \
+        --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
+        --timeout="${PLUGIN_TIMEOUT}" \
+        --plugin=tools/plugins/openshift-kube-conformance.yaml \
+        --plugin=tools/plugins/openshift-provider-cert-level-1.yaml \
+        --plugin=tools/plugins/openshift-provider-cert-level-2.yaml \
+        --plugin=tools/plugins/openshift-provider-cert-level-3.yaml
+    RC=$?
+    if [[ ${RC} -ne 0 ]]; then
+        echo "ERROR: error running the tool. Please check the errors and try again."
+        exit ${RC}
+    fi
 }
 
 wait_for_jobs_running() {
-    sleep 5 # waiting to leave from 'Pending' state
     echo "$(date)> The certification tool is running, statuses will be reported every minute..."
+    sleep 5 # waiting to leave from 'Pending' state
     while true; do
         run_status_updater
-        if [[ "$(jq -r .status ${STAT_FILE})" != "running" ]]; then
+        if [[ "$(jq -r .status "${STAT_FILE}")" != "running" ]]; then
             break
         fi
         show_status
-        sleep 10
+        sleep "${STATUS_INTERVAL_SEC}"
     done
     show_status
     echo -e "\n\n$(date)> Jobs has finished."
@@ -235,17 +304,12 @@ wait_for_jobs_running() {
 }
 
 wait_for_post_processor() {
-    #TODO(): Create a fn show_results w/ custom fields of processor,
-    # w/o PROGRESS field.
-    #TODO(): there's a bug on kube-conformance suite with is crashing
-    # the plugin, resulting in empty junit files. Report-progress should
-    # report crashs like that w/ some insights on MSG aggregator field.
 
     echo -e "\nWaiting the post-processor to collect the results..."
     cnt=0
     while true; do
         run_status_updater
-        if [[ "$(jq -r .status ${STAT_FILE})" != "post-processing" ]]; then
+        if [[ "$(jq -r .status "${STAT_FILE}")" != "post-processing" ]]; then
             break
         fi
         cnt=$(( cnt + 1 ))
@@ -254,7 +318,7 @@ wait_for_post_processor() {
             echo -e "\n\n$(date)> Run again with option 'check'"
             exit 1
         fi
-        sleep 30
+        sleep "${STATUS_INTERVAL_SEC}"
     done
 }
 
@@ -268,11 +332,6 @@ collect_results() {
     while ${download_failed}; do
         result_file=$(sonobuoy retrieve)
         RC=$?
-        # TODO[1](release): need to collect artifacts if
-        #  'sonobuoy retrieve' returned 'EOF' (download error).
-        # https://github.com/mtulio/openshift-provider-certification/issues/4
-        # TODO[2](asap): The filename could be set for 'retrieve' option,
-        # so it can be an work arround while [1] is not fixed.
         if [[ ${RC} -eq 0 ]]; then
             download_failed=false
         fi
@@ -311,6 +370,17 @@ cmd_run() {
     check_sonobuoy_is_present
     set_scc
     run_default
+    echo "Jobs scheduled!"
+    if [[ "${OPT_WATCH}" == false ]]
+    then
+        echo "Collecting initial status..."
+        sleep 20
+        show_status
+        echo "You can check execution using 'status' option."
+        echo "Example: $0 status -w"
+        exit 0
+    fi
+    echo "Watcher flag detected! The status will be reported every ${STATUS_INTERVAL_SEC} seconds..."
     wait_for_jobs_running
     wait_for_post_processor
     collect_results
@@ -319,12 +389,14 @@ cmd_run() {
 # handler of cmd: run
 parse_cmd_run() {
 
+    local op_short
+    local op_long
+    op_short="hjw"
+    op_long="jobs,watch,"
+
     # NOTE: This requires GNU getopt.
-    # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
-    if ! opts=$(getopt -n 'openshift-provider-cert' \
-            -o hj \
-            --long jobs, \
-            -- "$@"); then
+    if ! opts=$(getopt -n "${PROG_NAME}" -o "${op_short}" --long "${op_long}" -- "$@");
+    then
         echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
         exit 1 ;
     fi
@@ -332,17 +404,14 @@ parse_cmd_run() {
 
     while true; do
         case "$1" in
-            -h | --help         ) show_help; exit 2 ;;
-            --timeout           ) RUN_TIMEOUT="$2" ; shift 2 ;;
-            -- ) shift; break ;;
-            * ) echo "Option not found"; break ;;
+            -h | --help  ) show_help; exit 2 ;;
+            --timeout    ) RUN_TIMEOUT="$2" ; shift 2 ;;
+            --watch | -w ) OPT_WATCH=true ; shift ;;
+            --           ) shift; break ;;
+            *            ) echo "Option not found"; break ;;
         esac
     done
 
-    if [[ -z "${KUBECONFIG:-}" ]]; then
-        echo "ERROR: KUBECONFIG env var is not set.";
-        exit 1;
-    fi
     cmd_run
 }
 
@@ -356,17 +425,49 @@ parse_cmd_destroy() {
     cmd_destroy
 }
 
+# handler of cmd: status
+parse_cmd_status() {
+    local op_short
+    local op_long
+    op_short="hw"
+    op_long="watch,"
+
+    # NOTE: This requires GNU getopt.
+    if ! opts=$(getopt -n "${PROG_NAME}" -o "${op_short}" --long "${op_long}" -- "$@");
+    then
+        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
+        exit 1 ;
+    fi
+    eval set -- "${opts}"
+
+    while true; do
+        case "$1" in
+            -h | --help  ) show_help; exit 2 ;;
+            --watch | -w ) OPT_WATCH=true ; shift || true;;
+            --           ) shift || true; break ;;
+            *            ) echo "Option not found"; break ;;
+        esac
+    done
+    cmd_status
+}
+
 #
 # Main
 #
 parse_cmds() {
-    case ${1:-""} in
-    "help"|"--help" ) show_help; exit 0 ;;
-    "run"           ) OPT_CMD="$1"; shift; parse_cmd_run "$@";;
-    "results"|"res" ) OPT_CMD="$1"; shift; parse_cmd_results "$@";;
-    "destroy"       ) OPT_CMD="$1"; shift; parse_cmd_destroy "$@";;
-    *) echo "Command [${1:-}] not found"; show_help;;
+    if [[ -z "${KUBECONFIG:-}" ]]; then
+        echo "ERROR: KUBECONFIG env var is not set.";
+        exit 1;
+    fi
+    OPT_CMD=$1; shift
+    case ${OPT_CMD:-""} in
+        "help"|"--help"     ) show_help; exit 0 ;;
+        "run"               ) parse_cmd_run "$@" ;;
+        "results"|"res"     ) parse_cmd_results "$@" ;;
+        "destroy"|"delete"  ) parse_cmd_destroy "$@" ;;
+        "status"            ) parse_cmd_status "$@" ;;
+        *) echo "Command [${OPT_CMD:-}] not found"; show_help ;;
     esac
 }
 
-parse_cmds "$*"
+parse_cmds "$@"
