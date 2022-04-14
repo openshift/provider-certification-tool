@@ -17,7 +17,7 @@ declare -gx OPT_WATCH
 declare -gx RUN_TIMEOUT
 
 declare -gxr PROG_NAME="openshift-provider-cert"
-declare -gxr WORKDIR="${PWD}/.openshift-cert"
+declare -gxr WORKDIR="./.openshift-cert"
 declare -gxr STAT_FILE="${WORKDIR}/sonobuoy-status.json"
 declare -gxr CMD_SONOBUOY="$(command -v sonobuoy)"
 declare -gxr RESULTS_LATEST="${WORKDIR}/results-latest.txt"
@@ -164,7 +164,7 @@ cmd_status() {
         exit 1
     fi
     run_status_updater
-    # jobs is with status=running
+    # execution has the status=running
     if [[ "$(jq -r .status "${STAT_FILE}")" == "running" ]]
     then
         if [[ "${OPT_WATCH}" == true ]]
@@ -174,29 +174,50 @@ cmd_status() {
         show_status
         exit 0
     fi
-    # jobs is with status=post-processing
+    # execution has the status=post-processing
     if [[ "$(jq -r .status "${STAT_FILE}")" == "post-processing" ]]
     then
+        if [[ "${OPT_WATCH}" == true ]]
+        then
+            wait_for_post_processor
+        fi
         show_results_processor
         exit 0
     fi
+    # execution has the status=complete
+    if [[ "$(jq -r .status "${STAT_FILE}")" == "complete" ]]
+    then
+        echo "The execution has been completed! Run '$0 retrieve' to collect the results."
+        exit 0
+    fi
     #TODO: check the other states
-    echo "TODO: unknown state [$(jq -r .status "${STAT_FILE}")]"
+    echo "Unknown state [$(jq -r .status "${STAT_FILE}")]"
 }
 #
 # cmd: results
 #
 cmd_results() {
+    local file_path
     if [[ ! -f "${RESULTS_LATEST}" ]]
     then
         echo "ERROR: the result file[${RESULTS_LATEST}] was not found."
+        exit 1
     fi
-    if [[ ! -f "$(cat "${RESULTS_LATEST}")" ]]
+    file_path="${WORKDIR}/$(cat "${RESULTS_LATEST}")"
+    if [[ ! -f "${file_path}" ]]
     then
-        echo "ERROR: the artifact file[$(cat "${RESULTS_LATEST}")] was not found."
+        echo "ERROR: the artifact file[${file_path}] was not found."
+        exit 1
     fi
-    ${CMD_SONOBUOY} results "$(cat "${RESULTS_LATEST}")"
+    echo "#> Reading results from file ${file_path}"
+    ${CMD_SONOBUOY} results "${file_path}"
 }
+
+
+cmd_retrieve() {
+    collect_results
+}
+
 #
 # cmd: destroy
 #
@@ -214,7 +235,7 @@ delete_sonobuoy_env() {
 
 delete_tests_namespaces() {
     sleep 10;
-    echo "Removing non-openshift NS (don't do it on the final release =] )"
+    echo "Removing non-openshift NS..."
     mapfile -t ns_to_delete < <(oc get projects |awk '{print$1}' |grep -vP '^(NAME)|(openshift)|(kube-(system|public|node-lease))|(default)' |sort -u || true)
     for project in "${ns_to_delete[@]}"; do
         echo "Stale namespace was found: [${project}], removing..."
@@ -305,7 +326,7 @@ wait_for_jobs_running() {
 
 wait_for_post_processor() {
 
-    echo -e "\nWaiting the post-processor to collect the results..."
+    echo -e "\nWaiting for post-processor..."
     cnt=0
     while true; do
         run_status_updater
@@ -320,12 +341,15 @@ wait_for_post_processor() {
         fi
         sleep "${STATUS_INTERVAL_SEC}"
     done
+    echo -e "\nPost-processor has finished. The results can be collected!"
 }
 
 collect_results() {
     echo -e "\n\nCollecting results..."
-    sleep 10
+    # TODO: Check if file available on "tar-info".name is present to
+    #  avoid donwload twice.
 
+    sleep 10
     set +o errexit
     download_failed=true
     retries=0
@@ -349,14 +373,9 @@ collect_results() {
         echo "Results saved at file ${result_file}"
         echo "Conformance runner has finished successfully."
 
-        # Used by report.sh
-        # TODO(pre-release): improve the result inspection.
-        # TODO(asap): remove dependency of report.sh
-        # https://github.com/mtulio/openshift-provider-certification/issues/16
-        test -f .tmp/ && mv .tmp/ .tmp/old-"$(date +%Y%m%d%H%M%S)"
-        test -f .tmp/ || mkdir -p .tmp/
-        echo "${result_file}" > .tmp/latest-result.txt
-        cp "${result_file}" ./.tmp/
+        # Used by 'results'
+        echo "${result_file}" > "${RESULTS_LATEST}"
+        mv "${result_file}" "${WORKDIR}"/
         exit 0
     fi
 
@@ -374,13 +393,13 @@ cmd_run() {
     if [[ "${OPT_WATCH}" == false ]]
     then
         echo "Collecting initial status..."
-        sleep 20
         show_status
         echo "You can check execution using 'status' option."
         echo "Example: $0 status -w"
         exit 0
     fi
     echo "Watcher flag detected! The status will be reported every ${STATUS_INTERVAL_SEC} seconds..."
+    sleep ${STATUS_INTERVAL_SEC}
     wait_for_jobs_running
     wait_for_post_processor
     collect_results
@@ -403,12 +422,11 @@ parse_cmd_run() {
     eval set -- "${opts}"
 
     while true; do
-        case "$1" in
+        case "${1:-""}" in
             -h | --help  ) show_help; exit 2 ;;
             --timeout    ) RUN_TIMEOUT="$2" ; shift 2 ;;
             --watch | -w ) OPT_WATCH=true ; shift ;;
             --           ) shift; break ;;
-            *            ) echo "Option not found"; break ;;
         esac
     done
 
@@ -418,6 +436,11 @@ parse_cmd_run() {
 # handler of cmd: results
 parse_cmd_results() {
     cmd_results
+}
+
+# handler of cmd: retrieve
+parse_cmd_retrieve() {
+    cmd_retrieve
 }
 
 # handler of cmd: destroy
@@ -441,7 +464,7 @@ parse_cmd_status() {
     eval set -- "${opts}"
 
     while true; do
-        case "$1" in
+        case "${1:-""}" in
             -h | --help  ) show_help; exit 2 ;;
             --watch | -w ) OPT_WATCH=true ; shift || true;;
             --           ) shift || true; break ;;
@@ -459,14 +482,15 @@ parse_cmds() {
         echo "ERROR: KUBECONFIG env var is not set.";
         exit 1;
     fi
-    OPT_CMD=$1; shift
+    OPT_CMD="${1:-""}"; shift || true
     case ${OPT_CMD:-""} in
         "help"|"--help"     ) show_help; exit 0 ;;
         "run"               ) parse_cmd_run "$@" ;;
         "results"|"res"     ) parse_cmd_results "$@" ;;
+        "retrieve"          ) parse_cmd_retrieve "$@" ;;
         "destroy"|"delete"  ) parse_cmd_destroy "$@" ;;
         "status"            ) parse_cmd_status "$@" ;;
-        *) echo "Command [${OPT_CMD:-}] not found"; show_help ;;
+        * ) echo "Option [${OPT_CMD:-}] not found."; show_help ;;
     esac
 }
 
