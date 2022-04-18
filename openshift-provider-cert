@@ -19,9 +19,11 @@ declare -gx RUN_TIMEOUT
 declare -gxr PROG_NAME="openshift-provider-cert"
 declare -gxr WORKDIR="./.openshift-cert"
 declare -gxr STAT_FILE="${WORKDIR}/sonobuoy-status.json"
-declare -gxr CMD_SONOBUOY="$(command -v sonobuoy)"
 declare -gxr RESULTS_LATEST="${WORKDIR}/results-latest.txt"
 declare -gxr STATUS_INTERVAL_SEC=10
+
+sonobuoy_path="$(command -v sonobuoy)"
+declare -gxr CMD_SONOBUOY="${sonobuoy_path}"
 
 OPT_WATCH=false
 
