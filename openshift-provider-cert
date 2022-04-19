@@ -22,8 +22,12 @@ declare -gxr STAT_FILE="${WORKDIR}/sonobuoy-status.json"
 declare -gxr RESULTS_LATEST="${WORKDIR}/results-latest.txt"
 declare -gxr STATUS_INTERVAL_SEC=10
 
-sonobuoy_path="$(command -v sonobuoy)"
-declare -gxr CMD_SONOBUOY="${sonobuoy_path}"
+util_path_sonobuoy="$(command -v sonobuoy || true)"
+util_path_oc="$(command -v oc || true)"
+util_path_jq="$(command -v jq || true)"
+declare -gxr CMD_SONOBUOY="${util_path_sonobuoy}"
+declare -gxr CMD_OC="${util_path_oc}"
+declare -gxr CMD_JQ="${util_path_jq}"
 
 OPT_WATCH=false
 
@@ -76,6 +80,46 @@ Examples:
 
 EOF
 
+}
+
+#
+# Dependency
+#
+check_dependencies() {
+    if [[ -z "${KUBECONFIG:-}" ]];  then
+        echo "KUBECONFIG env var is not set. Please set it and try again."
+        exit 1
+    fi
+    if [[ ! -s "${KUBECONFIG:-}" ]];  then
+        echo "KUBECONFIG env was set to file [${KUBECONFIG}], but it appears to be empty."
+        exit 1
+    fi
+    if [[ ! -a "${CMD_SONOBUOY}" ]];  then
+        echo "'sonobuoy' utility was not found on your system. Steps to download it:"
+        echo " - Download it https://github.com/vmware-tanzu/sonobuoy/releases/tag/v0.56.4"
+        echo " - Copy it to any directory exported on your PATH"
+        echo " - Set the correct execution permissions"
+        echo " - Run the tool again"
+        exit 1
+    fi
+    if [[ ! -x "${CMD_SONOBUOY}" ]];  then
+        echo "'sonobuoy' utility found[${CMD_SONOBUOY}] but it has not execution permissiosn."
+        exit 1
+    fi
+    if [[ ! -a "${CMD_OC}" ]];  then
+        echo "OpenShift CLI 'oc' utility was not found on your system. Steps:"
+        echo " - https://docs.openshift.com/container-platform/4.10/cli_reference/openshift_cli/getting-started-cli.html#cli-installing-cli_cli-developer-commands"
+        echo " - Run the tool again"
+        exit 1
+    fi
+    if [[ ! -a "${CMD_JQ}" ]];  then
+        echo "'jq' utility was not found on your system. Steps:"
+        echo " - Download it: https://stedolan.github.io/jq/download/"
+        echo " - Copy it to any directory exported on your PATH"
+        echo " - Set the correct execution permissions"
+        echo " - Run the tool again"
+        exit 1
+    fi
 }
 
 #
@@ -480,10 +524,7 @@ parse_cmd_status() {
 # Main
 #
 parse_cmds() {
-    if [[ -z "${KUBECONFIG:-}" ]]; then
-        echo "ERROR: KUBECONFIG env var is not set.";
-        exit 1;
-    fi
+    check_dependencies
     OPT_CMD="${1:-""}"; shift || true
     case ${OPT_CMD:-""} in
         "help"|"--help"     ) show_help; exit 0 ;;
