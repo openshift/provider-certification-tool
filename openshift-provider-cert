@@ -79,9 +79,11 @@ Examples:
     ${0} destroy
 
 EOF
-
 }
 
+log_info() {
+    echo -e "$(date) #> $*"
+}
 #
 # Dependency
 #
@@ -122,18 +124,60 @@ check_dependencies() {
     fi
 }
 
+# Check if sonobuoy aggregator (main pod) is running.
+wait_for_required_resources() {
+    local aggregator_labels
+    aggregator_labels="component=sonobuoy,sonobuoy-component=aggregator"
+    if [[ -n "$(${CMD_OC} get pod -n sonobuoy \
+                -l ${aggregator_labels} \
+                -o jsonpath='{.items[*].metadata.name}' \
+                2>/dev/null || true)" ]]; then
+        return
+    fi
+    log_info "The aggregator is not running ['pod/sonobuoy']. Waiting for resource be created..."
+    ${CMD_OC} wait -n sonobuoy \
+        --timeout=10m \
+        --for=condition=ready \
+        pod -l ${aggregator_labels} >/dev/null
+}
+
+# Check if sonobuoy aggregator start reporting fields.
+wait_for_required_state() {
+    retries=0
+    retry_limit=10
+    while true; do
+        run_status_updater
+        if [[ -n "$(${CMD_JQ} -r '.status // ""' "${STAT_FILE}")" ]]; then
+            return
+        fi
+        retries=$(( retries + 1 ))
+        if [[ $retries -eq ${retry_limit} ]]; then
+            log_info "ERROR: Timeout waiting for the aggregator status...\n\n"
+            log_info "Check the command: 'sonobuoy status --json |jq .status'"
+            exit 1
+        fi
+        log_info "Error retrieving current aggregator status."
+        log_info "Waiting ${STATUS_INTERVAL_SEC}s to retry...[${retries}/${retry_limit}]"
+        sleep "${STATUS_INTERVAL_SEC}"
+    done
+}
+
 #
 # cmd: status
 #
 check_sonobuoy_ns_exists() {
-    if [[ -z "$(oc get projects |grep ^sonobuoy || true)" ]]; then
+    if [[ -z "$(${CMD_OC} get projects |grep ^sonobuoy || true)" ]]; then
         echo -ne 1
     fi
     echo -ne 0
 }
 
 run_status_updater() {
-    ${CMD_SONOBUOY} status --json > "${STAT_FILE}" 2>/dev/null || true
+    while true; do
+        ${CMD_SONOBUOY} status --json > "${STAT_FILE}" 2>/dev/null || true
+        test -s "${STAT_FILE}" && return
+        sleep "${STATUS_INTERVAL_SEC}"
+    done
 }
 
 # show_status reads the .msg field from plugin object used to implement
@@ -141,29 +185,29 @@ run_status_updater() {
 # state of plugin. It is not displayed by default on 'sonobuoy status'.
 show_status() {
     run_status_updater
-    printf "\n\n$(date)> Global Status: %s" "$(jq -r '.status // "Unknown"' ${STAT_FILE})"
+    printf "\n\n$(date)> Global Status: %s" "$(${CMD_JQ} -r '.status // "Unknown"' ${STAT_FILE})"
     printf "\n%-30s | %-10s | %-10s | %-25s | %-50s" \
             "JOB_NAME" "STATUS" "RESULTS" "PROGRESS" "MESSAGE"
-    for plugin_name in $(jq -r '.plugins[].plugin' ${STAT_FILE} |sort); do
-        pl_status=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\").status" "${STAT_FILE}")
-        pl_result=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-status\"]" "${STAT_FILE}" | tr -d '\n')
+    for plugin_name in $(${CMD_JQ} -r '.plugins[].plugin' ${STAT_FILE} |sort); do
+        pl_status=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\").status" "${STAT_FILE}")
+        pl_result=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-status\"]" "${STAT_FILE}" | tr -d '\n')
 
-        pl_prog_total=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\").progress.total // \"\"" "${STAT_FILE}" | tr -d '\n')
-        pl_prog_comp=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\").progress.completed // \"\"" "${STAT_FILE}" | tr -d '\n')
-        pl_prog_failed=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\").progress.failures|length" "${STAT_FILE}" | tr -d '\n')
+        pl_prog_total=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\").progress.total // \"\"" "${STAT_FILE}" | tr -d '\n')
+        pl_prog_comp=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\").progress.completed // \"\"" "${STAT_FILE}" | tr -d '\n')
+        pl_prog_failed=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\").progress.failures|length" "${STAT_FILE}" | tr -d '\n')
 
         pl_progress=""
         if [[ -n "${pl_prog_total}" ]]; then
             pl_progress="${pl_prog_comp}/${pl_prog_total} (${pl_prog_failed} failures)"
         fi
 
-        pl_count_pass=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-counts\"].passed" "${STAT_FILE}" | tr -d '\n')
-        pl_count_fail=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-counts\"].failed" "${STAT_FILE}" | tr -d '\n')
+        pl_count_pass=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-counts\"].passed" "${STAT_FILE}" | tr -d '\n')
+        pl_count_fail=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-counts\"].failed" "${STAT_FILE}" | tr -d '\n')
         test "${pl_count_pass}" == "null" && pl_count_pass=0
         test "${pl_count_fail}" == "null" && pl_count_fail=0
 
         if [[ "${pl_status}" == "running" ]]; then
-            pl_msg=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\") |.progress.msg // \"\"" "${STAT_FILE}" | tr -d '\n')
+            pl_msg=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\") |.progress.msg // \"\"" "${STAT_FILE}" | tr -d '\n')
         elif [[ "${pl_result}" == "" ]]; then
             pl_msg="waiting post-processor..."
         else
@@ -181,15 +225,15 @@ show_status() {
 # after the plugins has been completed.
 show_results_processor() {
     run_status_updater
-    printf "\n\n$(date)> Global Status: %s" "$(jq -r '.status // "Unknown"' ${STAT_FILE})"
+    printf "\n\n$(date)> Global Status: %s" "$(${CMD_JQ} -r '.status // "Unknown"' ${STAT_FILE})"
     printf "\n%-30s | %-10s | %-10s | %-50s" \
             "JOB_NAME" "STATUS" "RESULTS" "PROCESSOR RESULTS"
-    for plugin_name in $(jq -r '.plugins[].plugin' ${STAT_FILE} |sort); do
-        pl_status=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\").status" "${STAT_FILE}")
-        pl_result=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-status\"]" "${STAT_FILE}" | tr -d '\n')
+    for plugin_name in $(${CMD_JQ} -r '.plugins[].plugin' ${STAT_FILE} |sort); do
+        pl_status=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\").status" "${STAT_FILE}")
+        pl_result=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-status\"]" "${STAT_FILE}" | tr -d '\n')
 
-        pl_count_pass=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-counts\"].passed" "${STAT_FILE}" | tr -d '\n')
-        pl_count_fail=$(jq -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-counts\"].failed" "${STAT_FILE}" | tr -d '\n')
+        pl_count_pass=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-counts\"].passed" "${STAT_FILE}" | tr -d '\n')
+        pl_count_fail=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-counts\"].failed" "${STAT_FILE}" | tr -d '\n')
         test "${pl_count_pass}" == "null" && pl_count_pass=0
         test "${pl_count_fail}" == "null" && pl_count_fail=0
 
@@ -209,9 +253,10 @@ cmd_status() {
         echo "       Use the 'run' option to start the Certification process."
         exit 1
     fi
-    run_status_updater
+    wait_for_required_resources
+    wait_for_required_state
     # execution has the status=running
-    if [[ "$(jq -r .status "${STAT_FILE}")" == "running" ]]
+    if [[ "$(${CMD_JQ} -r .status "${STAT_FILE}")" == "running" ]]
     then
         if [[ "${OPT_WATCH}" == true ]]
         then
@@ -221,8 +266,9 @@ cmd_status() {
         exit 0
     fi
     # execution has the status=post-processing
-    if [[ "$(jq -r .status "${STAT_FILE}")" == "post-processing" ]]
+    if [[ "$(${CMD_JQ} -r .status "${STAT_FILE}")" == "post-processing" ]]
     then
+        log_info "The execution is being processed, please wait for 'complete' state."
         if [[ "${OPT_WATCH}" == true ]]
         then
             wait_for_post_processor
@@ -231,13 +277,13 @@ cmd_status() {
         exit 0
     fi
     # execution has the status=complete
-    if [[ "$(jq -r .status "${STAT_FILE}")" == "complete" ]]
+    if [[ "$(${CMD_JQ} -r .status "${STAT_FILE}")" == "complete" ]]
     then
-        echo "The execution has been completed! Run '$0 retrieve' to collect the results."
+        log_info "The execution has been completed! Run '$0 retrieve' to collect the results."
         exit 0
     fi
     #TODO: check the other states
-    echo "Unknown state [$(jq -r .status "${STAT_FILE}")]"
+    log_info "Unknown state [$(${CMD_JQ} -r .status "${STAT_FILE}")]"
 }
 #
 # cmd: results
@@ -255,7 +301,7 @@ cmd_results() {
         echo "ERROR: the artifact file[${file_path}] was not found."
         exit 1
     fi
-    echo "#> Reading results from file ${file_path}"
+    log_info "#> Reading results from file ${file_path}"
     ${CMD_SONOBUOY} results "${file_path}"
 }
 
@@ -269,8 +315,8 @@ cmd_retrieve() {
 #
 check_sonobuoy_not_present() {
     # Check if there's sonobuoy environment: should fail
-    if [[ -z "$(oc get projects |grep ^sonobuoy || true)" ]]; then
-        echo "The namespace [sonobuoy] is not present on cluster. Ignoring..."
+    if [[ -z "$(${CMD_OC} get projects |grep ^sonobuoy || true)" ]]; then
+        echo "The namespace [sonobuoy] is not present on cluster. Exiting."
         exit 1
     fi
 }
@@ -280,29 +326,28 @@ delete_sonobuoy_env() {
 }
 
 delete_tests_namespaces() {
-    sleep 10;
-    echo "Removing non-openshift NS..."
-    mapfile -t ns_to_delete < <(oc get projects |awk '{print$1}' |grep -vP '^(NAME)|(openshift)|(kube-(system|public|node-lease))|(default)' |sort -u || true)
+    sleep "${STATUS_INTERVAL_SEC}";
+    log_info "Removing non-openshift NS..."
+    mapfile -t ns_to_delete < <(${CMD_OC} get projects |awk '{print$1}' |grep -vP '^(NAME)|(openshift)|(kube-(system|public|node-lease))|(default)' |sort -u || true)
     for project in "${ns_to_delete[@]}"; do
         echo "Stale namespace was found: [${project}], removing..."
-        oc delete project "${project}" || true
+        ${CMD_OC} delete project "${project}" || true
     done
 }
 
 restore_scc() {
-    echo "Restoring privileged environment..."
-    oc adm policy remove-scc-from-group anyuid system:authenticated system:serviceaccounts || true
-    oc adm policy remove-scc-from-group privileged system:authenticated system:serviceaccounts  || true
+    log_info "Restoring privileged environment..."
+    ${CMD_OC} adm policy remove-scc-from-group anyuid system:authenticated system:serviceaccounts || true
+    ${CMD_OC} adm policy remove-scc-from-group privileged system:authenticated system:serviceaccounts  || true
 }
 
 delete_sonobuoy_status() {
-    echo "Removing status file"
+    log_info "Removing status file"
     rm "${STAT_FILE}" || true
 }
 
 cmd_destroy() {
-    echo "##> "
-    echo "#> Starting destroy flow..."
+    log_info "Starting the destroy flow..."
 
     if [[ -n "$(oc get projects |grep ^sonobuoy || true)" ]]
     then
@@ -312,7 +357,7 @@ cmd_destroy() {
 
     delete_tests_namespaces
     restore_scc
-    echo "Destroy Done!"
+    log_info "Destroy Done!"
 }
 
 #
@@ -322,19 +367,20 @@ check_sonobuoy_is_present() {
     if [[ $(check_sonobuoy_ns_exists) -eq 0 ]]
     then
         echo "ERROR: Looks like the Certification environment exists."
+        echo "Run the 'status' to check the current certification tests."
         echo "Run the 'destroy' option before starting new certification tests."
         exit 1
     fi
 }
 
 set_scc() {
-    echo "Ensuring the Tool will run in the privileged environment..."
-    oc adm policy add-scc-to-group anyuid system:authenticated system:serviceaccounts
-    oc adm policy add-scc-to-group privileged system:authenticated system:serviceaccounts
+    log_info "Ensuring the Tool will run in the privileged environment..."
+    ${CMD_OC} adm policy add-scc-to-group anyuid system:authenticated system:serviceaccounts
+    ${CMD_OC} adm policy add-scc-to-group privileged system:authenticated system:serviceaccounts
 }
 
 run_default() {
-    echo "Running OpenShift Provider Certification Tool..."
+    log_info "Running OpenShift Provider Certification Tool..."
     # Do not use timeout=0:
     # https://github.com/mtulio/openshift-provider-certification/issues/17
     PLUGIN_TIMEOUT=${RUN_TIMEOUT:-43200}
@@ -354,8 +400,7 @@ run_default() {
 }
 
 wait_for_jobs_running() {
-    echo "$(date)> The certification tool is running, statuses will be reported every minute..."
-    sleep 5 # waiting to leave from 'Pending' state
+    log_info "The certification tool is running, statuses will be reported soon..."
     while true; do
         run_status_updater
         if [[ "$(jq -r .status "${STAT_FILE}")" != "running" ]]; then
@@ -365,14 +410,12 @@ wait_for_jobs_running() {
         sleep "${STATUS_INTERVAL_SEC}"
     done
     show_status
-    echo -e "\n\n$(date)> Jobs has finished."
-    sleep 5
+    log_info "Jobs has finished.\n"
     show_results_processor
 }
 
 wait_for_post_processor() {
-
-    echo -e "\nWaiting for post-processor..."
+    log_info "Waiting for post-processor..."
     cnt=0
     while true; do
         run_status_updater
@@ -380,25 +423,25 @@ wait_for_post_processor() {
             break
         fi
         cnt=$(( cnt + 1 ))
-        if [[ $cnt -eq 20 ]]; then
-            echo -e "\n\n$(date)> Timeout waiting the result post-processor..."
-            echo -e "\n\n$(date)> Run again with option 'check'"
+        if [[ ${cnt} -eq 20 ]]; then
+            log_info "ERROR: Timeout waiting for the result post-processor...\n\n"
+            log_info " Run 'status' to check the current state.\n"
+            log_info " Run 'retrieve' to collect the results.\n"
             exit 1
         fi
         sleep "${STATUS_INTERVAL_SEC}"
     done
-    echo -e "\nPost-processor has finished. The results can be collected!"
+    log_info "Post-processor has finished. The results can be collected!"
 }
 
 collect_results() {
-    echo -e "\n\nCollecting results..."
+    log_info "Collecting results..."
     # TODO: Check if file available on "tar-info".name is present to
     #  avoid donwload twice.
-
-    sleep 10
     set +o errexit
     download_failed=true
     retries=0
+    retry_limit=10
     while ${download_failed}; do
         result_file=$(sonobuoy retrieve)
         RC=$?
@@ -406,18 +449,18 @@ collect_results() {
             download_failed=false
         fi
         retries=$(( retries + 1 ))
-        if [[ $retries -eq 10 ]]; then
-            echo "Retries timed out. Check 'sonobuoy retrieve' command."
+        if [[ ${retries} -eq ${retry_limit} ]]; then
+            log_info "Retries timed out. Check 'sonobuoy retrieve' command."
             exit 1
         fi
-        echo "Error retrieving results. Waiting 10s to retry...[${retries}/10]"
-        sleep 10
+        log_info "Error retrieving results. Waiting ${STATUS_INTERVAL_SEC}s to retry...[${retries}/${retry_limit}]"
+        sleep "${STATUS_INTERVAL_SEC}"
     done
     set -o errexit
 
     if [[ -f ${result_file} ]]; then
-        echo "Results saved at file ${result_file}"
-        echo "Conformance runner has finished successfully."
+        log_info "Results saved at file ${result_file}"
+        log_info "Use the 'results' option to check the certification tests summary."
 
         # Used by 'results'
         echo "${result_file}" > "${RESULTS_LATEST}"
@@ -425,30 +468,33 @@ collect_results() {
         exit 0
     fi
 
-    echo "Results file not found. Execution has finished with errors."
+    log_info "Results file not found. Execution has finished with errors."
     exit 1
 }
 
 cmd_run() {
-    echo "Starting OpenShift Provider Certification Tool..."
+    log_info "Starting OpenShift Provider Certification Tool..."
 
     check_sonobuoy_is_present
     set_scc
     run_default
-    echo "Jobs scheduled!"
+
+    log_info "Jobs scheduled! Waiting for resouces be created..."
+    wait_for_required_resources
+    wait_for_required_state
     if [[ "${OPT_WATCH}" == false ]]
     then
-        echo "Collecting initial status..."
+        log_info "Collecting initial status..."
         show_status
-        echo "You can check execution using 'status' option."
+        log_info "You can check execution using 'status' option."
         echo "Example: $0 status -w"
         exit 0
     fi
-    echo "Watcher flag detected! The status will be reported every ${STATUS_INTERVAL_SEC} seconds..."
-    sleep ${STATUS_INTERVAL_SEC}
+    log_info "Watcher flag detected! Starting the status report..."
     wait_for_jobs_running
     wait_for_post_processor
     collect_results
+    log_info "Conformance runner has finished."
 }
 
 # handler of cmd: run
