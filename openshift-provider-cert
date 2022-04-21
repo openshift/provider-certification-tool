@@ -502,8 +502,8 @@ parse_cmd_run() {
 
     local op_short
     local op_long
-    op_short="hjw"
-    op_long="jobs,watch,"
+    op_short="hw"
+    op_long="watch,timeout:"
 
     # NOTE: This requires GNU getopt.
     if ! opts=$(getopt -n "${PROG_NAME}" -o "${op_short}" --long "${op_long}" -- "$@");
