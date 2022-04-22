@@ -513,7 +513,7 @@ parse_cmd_run() {
     local op_short
     local op_long
     op_short="hw"
-    op_long="watch,timeout:,sonobuoy-image:"
+    op_long="help,sonobuoy-image:,timeout:,watch"
 
     # NOTE: This requires GNU getopt.
     if ! opts=$(getopt -n "${PROG_NAME}" -o "${op_short}" --long "${op_long}" -- "$@");
