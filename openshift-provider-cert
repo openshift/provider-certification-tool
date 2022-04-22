@@ -13,6 +13,7 @@ set -o errexit
 # Globals
 #
 declare -gx OPT_CMD
+declare -gx OPT_SONOBUOY_IMAGE
 declare -gx OPT_WATCH
 declare -gx RUN_TIMEOUT
 
@@ -52,6 +53,8 @@ Global options:
     -h | --help                 Show this help.
 
 Available options for 'run':
+    --sonobuoy-image {name}     Optional. Container image override for the
+                                sonobuoy worker and aggregator.
     --timeout {number}          Optional. Timeout in minutes to
                                 wait the execution. Default: 43200
     -w|--watch                  Optional. Keep watch status after running.
@@ -384,6 +387,12 @@ run_default() {
     # Do not use timeout=0:
     # https://github.com/mtulio/openshift-provider-certification/issues/17
     PLUGIN_TIMEOUT=${RUN_TIMEOUT:-43200}
+
+    if [[ -n "${OPT_SONOBUOY_IMAGE:-}" ]]
+    then
+        FLAG_SONOBUOY_IMAGE="--sonobuoy-image=${OPT_SONOBUOY_IMAGE}"
+    fi
+
     ${CMD_SONOBUOY} run \
         --dns-namespace=openshift-dns \
         --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
@@ -391,7 +400,8 @@ run_default() {
         --plugin=tools/plugins/openshift-kube-conformance.yaml \
         --plugin=tools/plugins/openshift-provider-cert-level-1.yaml \
         --plugin=tools/plugins/openshift-provider-cert-level-2.yaml \
-        --plugin=tools/plugins/openshift-provider-cert-level-3.yaml
+        --plugin=tools/plugins/openshift-provider-cert-level-3.yaml \
+        ${FLAG_SONOBUOY_IMAGE:-}
     RC=$?
     if [[ ${RC} -ne 0 ]]; then
         echo "ERROR: error running the tool. Please check the errors and try again."
@@ -502,8 +512,8 @@ parse_cmd_run() {
 
     local op_short
     local op_long
-    op_short="hjw"
-    op_long="jobs,watch,"
+    op_short="hw"
+    op_long="help,sonobuoy-image:,timeout:,watch"
 
     # NOTE: This requires GNU getopt.
     if ! opts=$(getopt -n "${PROG_NAME}" -o "${op_short}" --long "${op_long}" -- "$@");
@@ -515,10 +525,11 @@ parse_cmd_run() {
 
     while true; do
         case "${1:-""}" in
-            -h | --help  ) show_help; exit 2 ;;
-            --timeout    ) RUN_TIMEOUT="$2" ; shift 2 ;;
-            --watch | -w ) OPT_WATCH=true ; shift ;;
-            --           ) shift; break ;;
+            -h | --help      ) show_help; exit 2 ;;
+            --sonobuoy-image ) OPT_SONOBUOY_IMAGE="$2" ; shift 2 ;;
+            --timeout        ) RUN_TIMEOUT="$2" ; shift 2 ;;
+            --watch | -w     ) OPT_WATCH=true ; shift ;;
+            --               ) shift; break ;;
         esac
     done
 
