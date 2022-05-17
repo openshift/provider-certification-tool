@@ -28,9 +28,18 @@ oc login https://172.30.0.1:443 \
 #
 os_log_info "[executor] Executor started. Choosing execution type based on environment sets."
 
+if [[ "${CERT_LEVEL}" == "1" ]]; then
+    suite="openshift/conformance"
+    os_log_info "Running openshift-tests suite [${suite}] Provider Conformance 'validation'[#1]..."
+    openshift-tests run \
+        --junit-dir "${RESULTS_DIR}" \
+        "${suite}" \
+        | tee -a "${RESULTS_PIPE}" || true
+    os_log_info "openshift-tests finished[$?]"
+
 # To run custom tests, set the environment CERT_LEVEL on plugin definition.
 # To generate the test file, use the script hack/generate-tests-tiers.sh
-if [[ -n "${CERT_TEST_FILE:-}" ]]; then
+elif [[ -n "${CERT_TEST_FILE:-}" ]]; then
     os_log_info "Running openshift-tests for custom tests [${CERT_TEST_FILE}]..."
     if [[ -s ${CERT_TEST_FILE} ]]; then
         openshift-tests run \

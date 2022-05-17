@@ -16,3 +16,9 @@ test "$(podman image exists openshift-tests:latest; echo $?)" -eq 0 || \
 # create plugin image
 podman build -t ${registry}/openshift-tests-provider-cert:latest .
 podman push ${registry}/openshift-tests-provider-cert:latest
+
+VERSION=$(date +%Y%m%d%H%M%S)
+podman tag \
+    ${registry}/openshift-tests-provider-cert:latest \
+    ${registry}/openshift-tests-provider-cert:"${VERSION}"
+podman push ${registry}/openshift-tests-provider-cert:"${VERSION}"
