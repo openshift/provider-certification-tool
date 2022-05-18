@@ -71,6 +71,56 @@ init_config() {
 export -f init_config
 
 #
+# openshift login
+#
+
+openshift_login() {
+    os_log_info_local "[global] Login to OpenShift cluster locally..."
+    oc login "${KUBE_API_INT}" \
+        --token="$(cat "${SA_TOKEN_PATH}")" \
+        --certificate-authority="${SA_CA_PATH}" || true;
+}
+
+#
+# Utilities extractor
+#
+
+# Extract utilities from internal image-registry
+start_utils_extractor() {
+    os_log_info_local "[utils_extractor] Starting..."
+    local util_otests="./openshift-tests"
+
+    os_log_info_local "[utils_extractor] Login to OpenShift Registry..."
+    oc registry login
+
+    os_log_info_local "[utils_extractor] Extracting openshift-tests utility..."
+    oc image extract \
+        image-registry.openshift-image-registry.svc:5000/openshift/tests:latest \
+        --insecure=true \
+        --file="${UTIL_OTESTS_BIN}"
+
+    os_log_info_local "[utils_extractor] check if it was downloaded..."
+    test -f ${util_otests} && chmod u+x ${util_otests}
+
+    os_log_info_local "[utils_extractor] move to ${UTIL_OTESTS_BIN}..."
+    mv ${util_otests} "${UTIL_OTESTS_BIN}"
+
+    os_log_info_local "[utils_extractor] unlock extractor..."
+    test -x "${UTIL_OTESTS_BIN}" && touch "${UTIL_OTESTS_READY}"
+}
+
+wait_utils_extractor() {
+    os_log_info_local "[wait_utils_extractor] waiting for utils_extractor()..."
+    while true;
+    do
+        os_log_info_local "Check if status file exists=[${UTIL_OTESTS_READY}]"
+        test -f "${UTIL_OTESTS_READY}" && break
+        sleep "${STATUS_UPDATE_INTERVAL_SEC}"
+    done
+    os_log_info_local "[global][wait_utils_extractor] finished!"
+}
+
+#
 # Status scraper collects the results of Sonobuoy plugins
 # The scraper will keep the status file STATUS_FILE consumed
 # by different components on this container (waiter, progress reporter).

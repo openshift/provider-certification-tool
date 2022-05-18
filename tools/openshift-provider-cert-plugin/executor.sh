@@ -15,15 +15,6 @@ test ! -f "${SA_CA_PATH}" || os_log_info "[executor] secret not found=${SA_CA_PA
 test ! -f "${SA_TOKEN_PATH}" || os_log_info "[executor] secret not found=${SA_TOKEN_PATH}"
 
 #
-# openshift login
-#
-
-os_log_info "[executor] Login to OpenShift cluster locally..."
-oc login https://172.30.0.1:443 \
-    --token="$(cat "${SA_TOKEN_PATH}")" \
-    --certificate-authority="${SA_CA_PATH}" || true;
-
-#
 # Executor options
 #
 os_log_info "[executor] Executor started. Choosing execution type based on environment sets."
