@@ -58,6 +58,10 @@ EOF
 }
 trap sig_handler_save_results EXIT
 
+os_log_info_local "starting openshift-tests utility extractor..."
+openshift_login
+start_utils_extractor &
+
 os_log_info_local "starting sonobuoy status scraper..."
 start_status_collector &
 wait_status_file
@@ -65,8 +69,10 @@ wait_status_file
 os_log_info_local "starting waiter..."
 "$(dirname "$0")"/wait-plugin.sh
 
-os_log_info_local "starting executor..."
+os_log_info_local "check and wait for utility extractor..."
+wait_utils_extractor
 
+os_log_info_local "starting executor..."
 "$(dirname "$0")"/executor.sh #| tee -a ${results_script_dir}/executor.log
 
 # TODO(report): add a post processor of JUnit to identify flakes
