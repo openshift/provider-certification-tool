@@ -4,8 +4,17 @@ set -o pipefail
 set -o nounset
 set -o errexit
 
-registry="quay.io/mrbraga"
+REGISTRY="${REGISTRY:-quay.io/mrbraga}"
+CONTAINER_IMAGE="${REGISTRY}/openshift-tests-provider-cert"
+VERSION_BUILD="${1:-devel}"
+VERSION=$(date +%Y%m%d%H%M%S)
 
+TMP_DIR="./tmp"
+SB_VERSION="0.56.6"
+SB_FILENAME="sonobuoy_${SB_VERSION}_linux_amd64.tar.gz"
+SB_URL="https://github.com/vmware-tanzu/sonobuoy/releases/download/v${SB_VERSION}/${SB_FILENAME}"
+SB_CONTAINER_SRC="docker.io/sonobuoy/sonobuoy:v${SB_VERSION}"
+SB_CONTAINER_DST="${REGISTRY}/sonobuoy:v${SB_VERSION}"
 
 # build openshift-tests image (@openshift/origin)
 test "$(podman image exists openshift-tests:latest; echo $?)" -eq 0 || \
@@ -15,24 +24,36 @@ test "$(podman image exists openshift-tests:latest; echo $?)" -eq 0 || \
 "$(dirname "$0")"/generate-tests-tiers.sh
 "$(dirname "$0")"/generate-tests-exception.sh
 
-# Download Sonobuoy
-sb_version="0.56.6"
-sb_filename="sonobuoy_${sb_version}_linux_amd64.tar.gz"
-sb_url="https://github.com/vmware-tanzu/sonobuoy/releases/download/v${sb_version}/${sb_filename}"
+# Sonobuoy
 
-mkdir -p ./tmp
-rm -rvf ./tmp/* ./sonobuoy
+mkdir -p ${TMP_DIR}
 
-wget ${sb_url} -P ./tmp
-tar xfz ./tmp/${sb_filename} sonobuoy
-./sonobuoy version
+## Download Sonobuoy
+if [[ ! -f ${TMP_DIR}/${SB_FILENAME} ]]; then
+    rm -rvf ${TMP_DIR}/*.tar.gz ${TMP_DIR}/sonobuoy
+    wget ${SB_URL} -P ${TMP_DIR}/
+fi
+
+if [[ ! -f ${TMP_DIR}/sonobuoy ]]; then
+    tar xvfz ${TMP_DIR}/${SB_FILENAME} -C ${TMP_DIR}/ sonobuoy
+fi
+
+echo "Sonobuoy version (want): v${SB_VERSION}"
+${TMP_DIR}/sonobuoy version
 
 # create plugin image
-podman build -t ${registry}/openshift-tests-provider-cert:latest .
-podman push ${registry}/openshift-tests-provider-cert:latest
+podman build -t "${CONTAINER_IMAGE}":"${VERSION_BUILD}" .
+podman push "${CONTAINER_IMAGE}":"${VERSION_BUILD}"
 
-VERSION=$(date +%Y%m%d%H%M%S)
 podman tag \
-    ${registry}/openshift-tests-provider-cert:latest \
-    ${registry}/openshift-tests-provider-cert:"${VERSION}"
-podman push ${registry}/openshift-tests-provider-cert:"${VERSION}"
+    "${CONTAINER_IMAGE}":"${VERSION_BUILD}" \
+    "${CONTAINER_IMAGE}":"${VERSION}"
+
+podman push "${CONTAINER_IMAGE}":"${VERSION}"
+
+echo "Mirroring sonobuoy container image"
+if [[ $(skopeo list-tags docker://"${REGISTRY}"/sonobuoy |jq -r ".Tags | index (\"v${SB_VERSION}\") // false") == false ]]; then
+    podman pull ${SB_CONTAINER_SRC} &&
+        podman tag "${SB_CONTAINER_SRC}" "${SB_CONTAINER_DST}" &&
+        podman push "${SB_CONTAINER_DST}"
+fi
