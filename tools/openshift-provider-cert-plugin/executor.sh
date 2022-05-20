@@ -4,7 +4,7 @@
 # openshift-tests-partner-cert runner
 #
 
-set -o pipefail
+#set -o pipefail
 set -o nounset
 # set -o errexit
 
@@ -26,6 +26,7 @@ if [[ "${CERT_LEVEL}" == "1" ]]; then
         --junit-dir "${RESULTS_DIR}" \
         "${suite}" \
         | tee -a "${RESULTS_PIPE}" || true
+
     os_log_info "openshift-tests finished[$?]"
 
 # To run custom tests, set the environment CERT_LEVEL on plugin definition.
@@ -62,7 +63,7 @@ elif [[ -n "${CUSTOM_TEST_FILTER_STR:-}" ]]; then
 else
     suite="${E2E_SUITE:-kubernetes/conformance}"
     os_log_info "Running default execution for openshift-tests suite [${suite}]..."
-    #TODO: Improve the visibility when this execution fails.
+    #TODO: Improve the visibility when this execution fails. Options:
     # - Save the stdout to a custom file
     # - Create a custom Junit file w/ failed test, and details about the
     #   failures. Maybe the entire b64 of stdout as failure description field.
@@ -70,6 +71,7 @@ else
         --junit-dir "${RESULTS_DIR}" \
         "${suite}" \
         | tee -a "${RESULTS_PIPE}" || true
+
     os_log_info "openshift-tests finished[$?]"
 fi
 
