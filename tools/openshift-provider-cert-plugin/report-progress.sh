@@ -182,7 +182,7 @@ report_sonobuoy_progress() {
                 PROGRESS["total"]=$(echo "${job_progress:1:-1}" | cut -d'/' -f 3)
 
             elif [[ $line == failed:* ]]; then
-                if [ -z "${jobs_faulures}" ]; then
+                if [ -z "${PROGRESS["failures"]}" ]; then
                     PROGRESS["failures"]=\"$(echo "$line" | cut -d"\"" -f2)\"
                 else
                     PROGRESS["failures"]+=,\"$(echo "$line" | cut -d"\"" -f2)\"
