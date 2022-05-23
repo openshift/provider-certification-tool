@@ -1,12 +1,39 @@
 podSpec:
+  # TODO check: Do we need to change to Always to avoid disruptions?
+  # We need to make sure the containers loop will work to avoid
+  # undesired restarts.
   restartPolicy: Never
   serviceAccountName: sonobuoy-serviceaccount
+  # Advanced schedule. Check the docs#requirements section
   tolerations:
-  - effect: NoSchedule
-    key: node-role.kubernetes.io/master
-    operator: Exists
-  - key: CriticalAddonsOnly
-    operator: Exists
+  - key: node-role.kubernetes.io/tests
+    operator: Equal
+    value: ""
+    effect: NoSchedule
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node-role.kubernetes.io/worker
+            operator: In
+            values:
+              - ""
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 99
+        preference:
+          matchExpressions:
+          - key: node-role.kubernetes.io/tests
+            operator: In
+            values:
+            - ""
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: node-role.kubernetes.io/worker
+            operator: In
+            values:
+            - ""
   containers:
     - name: report-progress
       image: quay.io/mrbraga/openshift-tests-provider-cert:devel
