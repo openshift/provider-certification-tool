@@ -11,6 +11,67 @@ to generate and run the tests used to run the provider certification.
 - podman
 - CI registry credentials to build [`openshift-tests` container][openshift-tests-dockerfile].
 
+## Requirements
+
+Hardware:
+- minimum for certification namespace: 4 GiB, 4 vCPU
+- cluster/control plane nodes: 3x 16 GiB, 4 vCPU
+- cluster/compute nodes: ${TBD}x 16 GiB, 4 vCPU
+
+### Suggestion to isolate the test workload (advanced/optional)
+
+Sometimes it could be interesting to isolate the test environment
+to avoid disruption on the execution - it could happen when
+there's no more resources on the node and the pod could be evicted,
+then it will become zombie[1] and will be removed only on the plugin
+certification environment timeout.
+
+If you would like to isolate the test environment workload to an
+specific node, you can do it by adjusting the plugin `podSpec`.
+
+Steps:
+- Choose one node with at least 8GiB of RAM and 4 vCPU
+- Set the node-label to `tests`
+- Set the node taint to `NoSchedule`
+```bash
+oc label node <node_name> node-role.kubernetes.io/tests=""
+oc taint node <node_name> node-role.kubernetes.io/tests="":NoSchedule
+```
+- Adjust the `podSpec` with `tolerations`:
+```yaml
+tolerations:
+    - key: "node-role.kubernetes.io/tests"
+      operator: "Equal"
+      value: ""
+      effect: "NoSchedule"
+affinity:
+    nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+            operator: In
+            values:
+                - ""
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 99
+        preference:
+            matchExpressions:
+            - key: node-role.kubernetes.io/tests
+            operator: In
+            values:
+            - ""
+        - weight: 1
+        preference:
+            matchExpressions:
+            - key: node-role.kubernetes.io/worker
+            operator: In
+            values:
+            - ""
+```
+- run the test environment
+
+
 ## Usage
 
 ### Build
