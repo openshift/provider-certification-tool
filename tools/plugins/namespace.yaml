@@ -1,0 +1,40 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    kubernetes.io/metadata.name: sonobuoy
+  annotations:
+    scheduler.alpha.kubernetes.io/defaultTolerations: '[{"operator": "Exists", "effect":
+      "NoSchedule", "key": "node-role.kubernetes.io/tests", "value": ""}]'
+  name: sonobuoy
+spec:
+  tolerations:
+    - key: node-role.kubernetes.io/tests
+      operator: "Equal"
+      value: ""
+      effect: "NoSchedule"
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node-role.kubernetes.io/worker
+            operator: In
+            values:
+              - ""
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 99
+        preference:
+          matchExpressions:
+            - key: node-role.kubernetes.io/tests
+              operator: In
+              values:
+              - ""
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: node-role.kubernetes.io/worker
+            operator: In
+            values:
+            - ""
