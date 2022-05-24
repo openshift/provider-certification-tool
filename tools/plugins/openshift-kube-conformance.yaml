@@ -7,8 +7,7 @@ podSpec:
   # Advanced schedule. Check the docs#requirements section
   tolerations:
   - key: node-role.kubernetes.io/tests
-    operator: Equal
-    value: ""
+    operator: Exists
     effect: NoSchedule
   affinity:
     nodeAffinity:
