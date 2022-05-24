@@ -150,7 +150,7 @@ Skipped: 1925
 **Other results (Benchmark)**
 | # | Scenario > Size | Total Time | results T/P/F/S** | Note |
 | -- | -- | -- | -- | -- |
-| 0 | 3x/3x > m6i.xl/m6i.(l\|xl) | N/A | N/A | Low/medium size crashed w/o dedicated node for tests. |
+| - | 3x/3x > m6i.xl/m6i.(l\|xl) | N/A | N/A | Most of Low&&medium size clusters crashed w/o dedicated node for tests. |
 | 0 | 3x/9x > m6i.xl/m6i.4xl | ~1h:56m | 3383/1414/44/1925 | Large cluster after fixes on pipefail handling |
 | 1 | 3x/3x/1x > m6i.xl/m6i.xl/m6i.xl | ~1h:59m | 3386/1416/45/1925 | Medium cluster, isolated test environment* |
 | 2 | 3x/3x/1x > m6i.xl/m6i.l/m6i.l | ~2h:01m | 3387/1421/41/1925 | AWS IPI default size, isolated test environment*; High IOPS on compute (~1.2k) |

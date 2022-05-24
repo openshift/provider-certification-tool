@@ -9,11 +9,7 @@ metadata:
       "NoSchedule", "key": "node-role.kubernetes.io/tests", "value": ""}]'
   name: sonobuoy
 spec:
-  tolerations:
-    - key: node-role.kubernetes.io/tests
-      operator: "Equal"
-      value: ""
-      effect: "NoSchedule"
+  # Not sure if it's valid for NS scope
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
