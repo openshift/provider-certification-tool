@@ -8,7 +8,8 @@ declare -grx CERT_TESTS_DIR="./tests/${OPENSHIFT_VERSION:-"v4.10"}"
 
 declare -gx CERT_LEVEL
 declare -gx CERT_TEST_FILE
-declare -gx CERT_TEST_FILE_COUNT
+declare -gx CERT_TEST_COUNT
+declare -gx CERT_TEST_SUITE
 
 declare -gAx PROGRESS
 declare -grx PROGRESS_URL="http://127.0.0.1:8099/progress"
