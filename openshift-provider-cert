@@ -15,6 +15,7 @@ set -o errexit
 declare -gx OPT_CMD
 declare -gx OPT_SONOBUOY_IMAGE
 declare -gx OPT_WATCH
+declare -gx OPT_DEDICATED
 declare -gx RUN_TIMEOUT
 
 declare -gxr PROG_NAME="openshift-provider-cert"
@@ -31,6 +32,7 @@ declare -gxr CMD_OC="${util_path_oc}"
 declare -gxr CMD_JQ="${util_path_jq}"
 
 OPT_WATCH=false
+OPT_DEDICATED=false
 
 mkdir -p "${WORKDIR}"
 
@@ -57,10 +59,11 @@ Available options for 'run':
                                 sonobuoy worker and aggregator.
     --timeout {number}          Optional. Timeout in minutes to
                                 wait the execution. Default: 43200
-    -w|--watch                  Optional. Keep watch status after running.
+    -w |--watch                 Optional. Keep watch status after running.
 
 Available options for 'status':
-    -w|--watch                  Optional. Keep watch status after running.
+    -w |--watch                 Optional. Keep watch status after running.
+    -d |--dedicated             Optional. Setup plugins to run in dedicated test environment.
 
 
 Examples:
@@ -189,7 +192,7 @@ run_status_updater() {
 show_status() {
     run_status_updater
     printf "\n\n$(date)> Global Status: %s" "$(${CMD_JQ} -r '.status // "Unknown"' ${STAT_FILE})"
-    printf "\n%-30s | %-10s | %-10s | %-25s | %-50s" \
+    printf "\n%-33s | %-10s | %-10s | %-25s | %-50s" \
             "JOB_NAME" "STATUS" "RESULTS" "PROGRESS" "MESSAGE"
     for plugin_name in $(${CMD_JQ} -r '.plugins[].plugin' ${STAT_FILE} |sort); do
         pl_status=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\").status" "${STAT_FILE}")
@@ -217,7 +220,7 @@ show_status() {
             pl_msg="Total tests processed: $(echo "$pl_count_pass + $pl_count_fail "|bc) (${pl_count_pass} pass / ${pl_count_fail} failed)"
         fi
 
-        printf "\n%-30s | %-10s | %-10s | %-25s | %-50s" \
+        printf "\n%-33s | %-10s | %-10s | %-25s | %-50s" \
                 "${plugin_name}" "${pl_status}" "${pl_result}" \
                 "${pl_progress}" "${pl_msg}"
     done
@@ -340,8 +343,10 @@ delete_tests_namespaces() {
 
 restore_scc() {
     log_info "Restoring privileged environment..."
-    ${CMD_OC} adm policy remove-scc-from-group anyuid system:authenticated system:serviceaccounts || true
-    ${CMD_OC} adm policy remove-scc-from-group privileged system:authenticated system:serviceaccounts  || true
+    ${CMD_OC} adm policy remove-scc-from-group \
+        anyuid system:authenticated system:serviceaccounts || true
+    ${CMD_OC} adm policy remove-scc-from-group \
+        privileged system:authenticated system:serviceaccounts  || true
 }
 
 delete_sonobuoy_status() {
@@ -382,7 +387,41 @@ set_scc() {
     ${CMD_OC} adm policy add-scc-to-group privileged system:authenticated system:serviceaccounts
 }
 
-run_default() {
+# Default run command
+run_env_default() {
+    ${CMD_SONOBUOY} run \
+        --dns-namespace=openshift-dns \
+        --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
+        --timeout="${PLUGIN_TIMEOUT}" \
+        --plugin=tools/plugins/openshift-kube-conformance.yaml \
+        --plugin=tools/plugins/openshift-conformance-validated.yaml \
+        ${FLAG_SONOBUOY_IMAGE:-}
+}
+
+#
+# README.md#recommended-dedicated-node
+#
+# TODO(fix) Issue: Sonobuoy does not allow to set the tolerations.
+# TODO(fix) Issue: Sonobuoy node-selector does not allow empty label/value,
+# like node-role/tests=''. So need to create a custom label `openshift-tests=true`
+# to filter the node.
+run_env_dedicated() {
+    # Mandatory NS annotations to NS to spin all the pods on dedicated node
+    ${CMD_OC} create -f tools/plugins/namespace.yaml
+
+    # Mandatory to skip preflight to avoid NS checking
+    ${CMD_SONOBUOY} run \
+        --dns-namespace=openshift-dns \
+        --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
+        --timeout="${PLUGIN_TIMEOUT}" \
+        --skip-preflight \
+        --plugin=tools/plugins/openshift-kube-conformance.yaml \
+        --plugin=tools/plugins/openshift-conformance-validated.yaml \
+        ${FLAG_SONOBUOY_IMAGE:-}
+}
+
+
+run_main() {
     log_info "Running OpenShift Provider Certification Tool..."
     # Do not use timeout=0:
     # https://github.com/mtulio/openshift-provider-certification/issues/17
@@ -390,21 +429,16 @@ run_default() {
 
     if [[ -n "${OPT_SONOBUOY_IMAGE:-}" ]]
     then
-        FLAG_SONOBUOY_IMAGE="--sonobuoy-image=${OPT_SONOBUOY_IMAGE}"
+        declare -x FLAG_SONOBUOY_IMAGE="--sonobuoy-image=${OPT_SONOBUOY_IMAGE}"
     fi
-    # TODO(fix) Issue: Sonobuoy does not allow to set the tolerations
-    #
-    oc create -f tools/plugins/namespace.yaml
-    # TODO(fix) Issue: Sonobuoy node-selector does not allow empty label/value, like node-role/tests=''
-    # So need to create a custom label `openshift-tests=true` to filter the node
-    ${CMD_SONOBUOY} run \
-        --dns-namespace=openshift-dns \
-        --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
-        --timeout="${PLUGIN_TIMEOUT}" \
-        --plugin=tools/plugins/openshift-kube-conformance.yaml \
-        --plugin=tools/plugins/openshift-provider-cert-level-1.yaml \
-        --skip-preflight \
-        ${FLAG_SONOBUOY_IMAGE:-}
+
+    # Check if need to run in dedicated environment
+    if [[ "${OPT_DEDICATED:-false}" == "true" ]]
+    then
+        run_env_dedicated
+    else
+        run_env_default
+    fi
     RC=$?
     if [[ ${RC} -ne 0 ]]; then
         echo "ERROR: error running the tool. Please check the errors and try again."
@@ -490,7 +524,7 @@ cmd_run() {
 
     check_sonobuoy_is_present
     set_scc
-    run_default
+    run_main
 
     log_info "Jobs scheduled! Waiting for resouces be created..."
     wait_for_required_resources
@@ -558,8 +592,8 @@ parse_cmd_destroy() {
 parse_cmd_status() {
     local op_short
     local op_long
-    op_short="hw"
-    op_long="watch,"
+    op_short="hwd"
+    op_long="watch,dedicated,"
 
     # NOTE: This requires GNU getopt.
     if ! opts=$(getopt -n "${PROG_NAME}" -o "${op_short}" --long "${op_long}" -- "$@");
@@ -571,10 +605,11 @@ parse_cmd_status() {
 
     while true; do
         case "${1:-""}" in
-            -h | --help  ) show_help; exit 2 ;;
-            --watch | -w ) OPT_WATCH=true ; shift || true;;
-            --           ) shift || true; break ;;
-            *            ) echo "Option not found"; break ;;
+            -h | --help      ) show_help; exit 2 ;;
+            --watch     | -w ) OPT_WATCH=true ; shift || true;;
+            --dedicated | -d ) OPT_DEDICATED=true ; shift || true;;
+            --               ) shift || true; break ;;
+            *                ) echo "Option not found"; break ;;
         esac
     done
     cmd_status
