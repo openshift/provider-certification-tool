@@ -194,7 +194,7 @@ show_status() {
     printf "\n\n$(date)> Global Status: %s" "$(${CMD_JQ} -r '.status // "Unknown"' ${STAT_FILE})"
     printf "\n%-33s | %-10s | %-10s | %-25s | %-50s" \
             "JOB_NAME" "STATUS" "RESULTS" "PROGRESS" "MESSAGE"
-    for plugin_name in $(${CMD_JQ} -r '.plugins[].plugin' ${STAT_FILE} |sort); do
+    for plugin_name in $(${CMD_JQ} -r '.plugins[].plugin' ${STAT_FILE} | sort); do
         pl_status=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\").status" "${STAT_FILE}")
         pl_result=$(${CMD_JQ} -r ".plugins[] | select (.plugin==\"${plugin_name}\")[\"result-status\"]" "${STAT_FILE}" | tr -d '\n')
 
@@ -393,8 +393,8 @@ run_env_default() {
         --dns-namespace=openshift-dns \
         --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
         --timeout="${PLUGIN_TIMEOUT}" \
-        --plugin=tools/plugins/openshift-kube-conformance.yaml \
-        --plugin=tools/plugins/openshift-conformance-validated.yaml \
+        --plugin=tools/plugins/openshift-kube-conformance_env-shared.yaml \
+        --plugin=tools/plugins/openshift-conformance-validated_env-shared.yaml \
         ${FLAG_SONOBUOY_IMAGE:-}
 }
 
@@ -415,8 +415,8 @@ run_env_dedicated() {
         --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
         --timeout="${PLUGIN_TIMEOUT}" \
         --skip-preflight \
-        --plugin=tools/plugins/openshift-kube-conformance.yaml \
-        --plugin=tools/plugins/openshift-conformance-validated.yaml \
+        --plugin=tools/plugins/openshift-kube-conformance_env-dedicated.yaml \
+        --plugin=tools/plugins/openshift-conformance-validated_env-dedicated.yaml \
         ${FLAG_SONOBUOY_IMAGE:-}
 }
 
