@@ -1,4 +1,6 @@
 ---
+# Namespace should be created when running dedicated node.
+# See instructions on README.md#recommended-dedicated-node
 apiVersion: v1
 kind: Namespace
 metadata:

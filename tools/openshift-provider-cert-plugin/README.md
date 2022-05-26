@@ -21,6 +21,14 @@ Hardware:
 
 *As we run several disruption tests, it's highly recommended to run the certification in an dedicated node with proper scheduler tolerations. Please see the section below to setup an dedicated node.
 
+| Node Role | Count | vCPU (rec*) | RAM (rec*) | vCPU (min) | RAM (min) |
+| -- | -- | -- | -- | -- | -- |
+| control plane | 3 | 4 | 16 GiB | -- | -- |
+| compute | 3 |  4 | 16 GiB | 4 | 16 GiB |
+
+*recommended sizing when running the default installation. It's recommended to
+run in the dedicated nodes to avoid disruptions. Read the topic below for more details.
+
 ### Dedicated test environment (recommended)
 
 Sometimes when the compute nodes has small size, it is recommended to
@@ -34,12 +42,23 @@ When it happened you can see the events on the namespace `sonobuoy`, and missing
 plugin's pods, the sonobuoy sometimes does not detect it[1] and the certification
 environment will run until the timeout, with expected failures.
 
-[1] TODO: file a bug
+[1] [SPLAT-524](https://issues.redhat.com/browse/SPLAT-524)
 
 If you would like to isolate the test environment workload to an
 specific node, you can do it by adjusting the plugin `podSpec`.
 
-Steps:
+The cluster size also can be adjusted to smaller compute nodes (minimum) when running one dedicated
+node to openshift-tests, the matrix can be updated:
+
+| Node Role | Count | vCPU (rec*) | RAM (rec*) | vCPU (min) | RAM (min) |
+| -- | -- | -- | -- | -- | -- |
+| control plane | 3 | 4 | 16 GiB | -- | -- |
+| compute | 3 |  4 | 16 GiB | 2 | 8 GiB |
+| openshift-tests | 1 | 4 | 8 GiB | 2 | 8 GiB |
+
+*recommended size
+
+Steps to run dedicated environment:
 - Choose one node with at least 8GiB of RAM and 4 vCPU
 - Set the node-label to `tests`
 - Taint the node taint to `NoSchedule`
@@ -89,6 +108,7 @@ affinity:
             values:
             - ""
 ```
+
 - run the test environment
 
 ### Runtime Observations
@@ -159,14 +179,6 @@ Skipped: 1925
 environment (aggregator+plugins) to avoid disruptions that had frequently impacted the execution.
 
 **Total/Passed/Failed/Skipped
-
-| Node Role | Count | vCPU (rec*) | RAM (rec*) | vCPU (min) | RAM (min) |
-| -- | -- | -- | -- | -- | -- |
-| control plane | 3 | 4 | 16 GiB | -- | -- |
-| compute | 3 |  4 | 16 GiB | 2 | 8 GiB |
-| openshift-tests | 1 | 4 | 8 GiB | 2 | 4 GiB |
-
-*recommended size
 
 ## Usage
 
