@@ -1,7 +1,7 @@
 podSpec:
   restartPolicy: Never
   serviceAccountName: sonobuoy-serviceaccount
-  # Advanced schedule. Check the docs#requirements section
+  # See instructions on README.md#recommended-dedicated-node
   tolerations:
   - key: node-role.kubernetes.io/tests
     operator: Exists
@@ -41,24 +41,24 @@ podSpec:
         name: results
       env:
         - name: CERT_LEVEL
-          value: "3"
+          value: "0"
 
 sonobuoy-config:
   driver: Job
-  plugin-name: openshift-provider-cert-level3
+  plugin-name: openshift-kube-conformance
   result-format: junit
-  description: The end-to-end tests maintained by OpenShift to certify the Provider running the OpenShift Container Platform.
-  source-url: https://github.com/openshift/provider-certification-tool/blob/mvp/tools/plugins/openshift-provider-cert-level-3.yaml
+  description: The end-to-end tests maintained by Kubernetes to certify the platform.
+  source-url: https://github.com/openshift/provider-certification-tool/blob/mvp/tools/plugins/openshift-kube-conformance.yaml
   skipCleanup: true
 spec:
   name: plugin
   image: quay.io/mrbraga/openshift-tests-provider-cert:devel
   imagePullPolicy: Always
   priorityClassName: system-node-critical
-  resources: {}
   volumeMounts:
   - mountPath: /tmp/sonobuoy/results
     name: results
   env:
     - name: CERT_LEVEL
-      value: "3"
+      value: "0"
+  resources: {}
