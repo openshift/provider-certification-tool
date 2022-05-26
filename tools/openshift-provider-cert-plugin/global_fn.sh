@@ -39,7 +39,7 @@ init_config() {
 
     elif [[ "${CERT_LEVEL:-}" == "1" ]]
     then
-        PLUGIN_NAME="openshift-provider-cert-level1"
+        PLUGIN_NAME="openshift-conformance-validated"
         CERT_TEST_FILE=""
         CERT_TEST_SUITE="openshift/conformance"
         PLUGIN_BLOCKED_BY+=("openshift-kube-conformance")
@@ -49,7 +49,7 @@ init_config() {
         PLUGIN_NAME="openshift-provider-cert-level2"
         CERT_TEST_FILE=""
         CERT_TEST_SUITE=""
-        PLUGIN_BLOCKED_BY+=("openshift-provider-cert-level1")
+        PLUGIN_BLOCKED_BY+=("openshift-conformance-validated")
 
     elif [[ "${CERT_LEVEL:-}" == "3" ]]
     then

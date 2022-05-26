@@ -19,12 +19,11 @@ test ! -f "${SA_TOKEN_PATH}" || os_log_info "[executor] secret not found=${SA_TO
 #
 os_log_info "[executor] Executor started. Choosing execution type based on environment sets."
 
-if [[ "${CERT_LEVEL}" == "1" ]]; then
-    suite="openshift/conformance"
-    os_log_info "Running openshift-tests suite [${suite}] Provider Conformance 'validation'[#1]..."
+if [[ -n "${CERT_TEST_SUITE}" ]]; then
+    os_log_info "Running openshift-tests suite [${CERT_TEST_SUITE}] Provider Conformance..."
     openshift-tests run \
         --junit-dir "${RESULTS_DIR}" \
-        "${suite}" \
+        "${CERT_TEST_SUITE}" \
         | tee -a "${RESULTS_PIPE}" || true
 
     os_log_info "openshift-tests finished[$?]"
