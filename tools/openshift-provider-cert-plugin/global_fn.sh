@@ -34,24 +34,28 @@ init_config() {
     then
         PLUGIN_NAME="openshift-kube-conformance"
         CERT_TEST_FILE=""
+        CERT_TEST_SUITE="kubernetes/conformance"
         PLUGIN_BLOCKED_BY=()
 
     elif [[ "${CERT_LEVEL:-}" == "1" ]]
     then
         PLUGIN_NAME="openshift-provider-cert-level1"
-        CERT_TEST_FILE="${CERT_TESTS_DIR}/level1.txt"
+        CERT_TEST_FILE=""
+        CERT_TEST_SUITE="openshift/conformance"
         PLUGIN_BLOCKED_BY+=("openshift-kube-conformance")
 
     elif [[ "${CERT_LEVEL:-}" == "2" ]]
     then
         PLUGIN_NAME="openshift-provider-cert-level2"
-        CERT_TEST_FILE="${CERT_TESTS_DIR}/level2.txt"
+        CERT_TEST_FILE=""
+        CERT_TEST_SUITE=""
         PLUGIN_BLOCKED_BY+=("openshift-provider-cert-level1")
 
     elif [[ "${CERT_LEVEL:-}" == "3" ]]
     then
         PLUGIN_NAME="openshift-provider-cert-level3"
-        CERT_TEST_FILE="${CERT_TESTS_DIR}/level3.txt"
+        CERT_TEST_FILE=""
+        CERT_TEST_SUITE=""
         PLUGIN_BLOCKED_BY+=("openshift-provider-cert-level2")
 
     else
@@ -61,22 +65,38 @@ init_config() {
 
     os_log_info_local "Plugin Config: PLUGIN_NAME=[${PLUGIN_NAME:-}] PLUGIN_BLOCKED_BY=[${PLUGIN_BLOCKED_BY[*]}] CERT_TEST_FILE=[${CERT_TEST_FILE}]"
 
-    export CERT_TEST_FILE_COUNT=0
-    if [[ -n "${CERT_TEST_FILE:-}" ]]; then
-        CERT_TEST_FILE_COUNT="$(wc -l "${CERT_TEST_FILE}" |cut -f 1 -d' ' |tr -d '\n')"
-    fi
-    os_log_info_local "Total tests was found: [${CERT_TEST_FILE_COUNT}]"
+
     os_log_info_local "Setup config done."
 }
 export -f init_config
+
+update_config() {
+    export CERT_TEST_COUNT=0
+    if [[ -n "${CERT_TEST_FILE:-}" ]]; then
+        CERT_TEST_COUNT="$(wc -l "${CERT_TEST_FILE}" |cut -f 1 -d' ' |tr -d '\n')"
+    fi
+    if [[ "${CERT_TEST_SUITE:-}" != "" ]]
+    then
+        CERT_TEST_COUNT="$(openshift-tests run --dry-run "${CERT_TEST_SUITE}" | wc -l)"
+    fi
+    os_log_info_local "Total tests was found: [${CERT_TEST_COUNT}]"
+}
 
 #
 # openshift login
 #
 
 openshift_login() {
-    os_log_info_local "[global] Login to OpenShift cluster locally..."
+    os_log_info_local "[global] Trying to login to OpenShift cluster locally..."
     oc login "${KUBE_API_INT}" \
+        --token="$(cat "${SA_TOKEN_PATH}")" \
+        --certificate-authority="${SA_CA_PATH}" || true;
+
+    os_log_info_local "[global] Discovering apiServerInternalURI..."
+    INT_URI="$(oc get infrastructures cluster -o json | jq -r .status.apiServerInternalURI)"
+
+    os_log_info_local "[global] Trying to login to OpenShift on internal URI [${INT_URI}]..."
+    oc login "${INT_URI}" \
         --token="$(cat "${SA_TOKEN_PATH}")" \
         --certificate-authority="${SA_CA_PATH}" || true;
 }
