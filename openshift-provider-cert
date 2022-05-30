@@ -389,13 +389,15 @@ set_scc() {
 
 # Default run command
 run_env_default() {
-    ${CMD_SONOBUOY} run \
+    local cmd
+    cmd="${CMD_SONOBUOY} run \
         --dns-namespace=openshift-dns \
         --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
-        --timeout="${PLUGIN_TIMEOUT}" \
+        --timeout=${PLUGIN_TIMEOUT} \
         --plugin=tools/plugins/openshift-kube-conformance_env-shared.yaml \
         --plugin=tools/plugins/openshift-conformance-validated_env-shared.yaml \
-        ${FLAG_SONOBUOY_IMAGE:-}
+        ${FLAG_SONOBUOY_IMAGE:-}"
+    ${cmd}
 }
 
 #
@@ -406,18 +408,21 @@ run_env_default() {
 # like node-role/tests=''. So need to create a custom label `openshift-tests=true`
 # to filter the node.
 run_env_dedicated() {
+    local cmd
+
     # Mandatory NS annotations to NS to spin all the pods on dedicated node
     ${CMD_OC} create -f tools/plugins/namespace.yaml
 
     # Mandatory to skip preflight to avoid NS checking
-    ${CMD_SONOBUOY} run \
+    cmd="${CMD_SONOBUOY} run \
         --dns-namespace=openshift-dns \
         --dns-pod-labels=dns.operator.openshift.io/daemonset-dns=default \
-        --timeout="${PLUGIN_TIMEOUT}" \
+        --timeout=${PLUGIN_TIMEOUT} \
         --skip-preflight \
         --plugin=tools/plugins/openshift-kube-conformance_env-dedicated.yaml \
         --plugin=tools/plugins/openshift-conformance-validated_env-dedicated.yaml \
-        ${FLAG_SONOBUOY_IMAGE:-}
+        ${FLAG_SONOBUOY_IMAGE:-}"
+    ${cmd}
 }
 
 
